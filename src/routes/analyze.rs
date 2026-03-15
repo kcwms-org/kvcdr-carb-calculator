@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     extract::{Multipart, State},
     Json,
@@ -5,15 +7,14 @@ use axum::{
 
 use crate::{
     cache::AnalysisCache,
-    config::Config,
-    engines::{build_engine, AnalysisInput},
+    engines::{AiEngine, AnalysisInput},
     error::AppError,
     models::AnalyzeResponse,
 };
 
 #[derive(Clone)]
 pub struct AppState {
-    pub config: Config,
+    pub engine: Arc<dyn AiEngine>,
     pub cache: AnalysisCache,
 }
 
@@ -24,7 +25,6 @@ pub async fn analyze_handler(
     let mut image_bytes: Option<Vec<u8>> = None;
     let mut image_mime: Option<String> = None;
     let mut text: Option<String> = None;
-    let mut engine_name: Option<String> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -55,15 +55,6 @@ pub async fn analyze_handler(
                     text = Some(value);
                 }
             }
-            Some("engine") => {
-                let value = field
-                    .text()
-                    .await
-                    .map_err(|e| AppError::MultipartError(e.to_string()))?;
-                if !value.trim().is_empty() {
-                    engine_name = Some(value);
-                }
-            }
             _ => {}
         }
     }
@@ -74,7 +65,7 @@ pub async fn analyze_handler(
         ));
     }
 
-    let engine_name = engine_name.unwrap_or_else(|| state.config.default_engine.clone());
+    let engine_name = state.engine.name().to_string();
 
     let cache_key = AnalysisCache::cache_key(
         &engine_name,
@@ -92,15 +83,13 @@ pub async fn analyze_handler(
         }));
     }
 
-    let engine = build_engine(&engine_name, &state.config)?;
-
     let input = AnalysisInput {
         image_bytes,
         image_mime,
         text,
     };
 
-    let items = engine.analyze(input).await?;
+    let items = state.engine.analyze(input).await?;
     let total = items.iter().map(|i| i.carbs_grams).sum();
 
     state.cache.set(cache_key, items.clone()).await;

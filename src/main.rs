@@ -5,14 +5,16 @@ mod error;
 mod models;
 mod routes;
 
+use std::sync::Arc;
+
 use axum::{routing::post, Router};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use cache::AnalysisCache;
 use config::Config;
+use engines::build_engine;
 use routes::analyze::{analyze_handler, AppState};
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -25,11 +27,9 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::from_env()?;
     let cache = AnalysisCache::new(config.cache_ttl_secs);
+    let engine = Arc::from(build_engine(&config.default_engine, &config)?);
 
-    let state = AppState {
-        config: config.clone(),
-        cache,
-    };
+    let state = AppState { engine, cache };
 
     let app = Router::new()
         .route("/analyze", post(analyze_handler))
