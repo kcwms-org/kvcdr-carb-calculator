@@ -1,0 +1,28 @@
+image: rust:1-slim-bookworm
+
+definitions:
+  caches:
+    cargo-registry:
+      key:
+        files:
+          - Cargo.lock
+      path: /usr/local/cargo/registry
+    cargo-target:
+      key:
+        files:
+          - Cargo.lock
+      path: target
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: Build, lint, and test
+          caches:
+            - cargo-registry
+            - cargo-target
+          script:
+            - apt-get update -qq && apt-get install -y -qq pkg-config
+            - cargo build --locked
+            - cargo clippy --locked -- -D warnings
+            - cargo test --locked
