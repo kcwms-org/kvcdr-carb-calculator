@@ -7,6 +7,7 @@ pub struct Config {
     pub default_engine: String,
     pub cache_ttl_secs: u64,
     pub server_port: u16,
+    pub redis_url: Option<String>,
 }
 
 impl Config {
@@ -25,6 +26,7 @@ impl Config {
                 .unwrap_or_else(|_| "3000".to_string())
                 .parse()
                 .context("SERVER_PORT must be a valid port number")?,
+            redis_url: env::var("REDIS_URL").ok(),
         })
     }
 }

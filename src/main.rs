@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env()?;
-    let cache = AnalysisCache::new(config.cache_ttl_secs);
+    let cache = AnalysisCache::new(config.cache_ttl_secs, config.redis_url.as_deref());
     let engine = Arc::from(build_engine(&config.default_engine, &config)?);
 
     let state = AppState { engine, cache };

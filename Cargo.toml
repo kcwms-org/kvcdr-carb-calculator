@@ -20,6 +20,9 @@ tower-http = { version = "0.5", features = ["cors"] }
 hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+redis = { version = "0.27", features = ["tokio-comp"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+image_hasher = "3.1"
 
 [dev-dependencies]
 axum-test = "15"
