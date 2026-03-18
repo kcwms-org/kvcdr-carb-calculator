@@ -27,3 +27,22 @@ pipelines:
             - cargo build --locked
             - cargo clippy --locked -- -D warnings
             - cargo test --locked
+
+      - step:
+          name: Deploy to Digital Ocean
+          image: debian:bookworm-slim
+          deployment: production
+          script:
+            - apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-client
+            - mkdir -p ~/.ssh
+            - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+            - chmod 600 ~/.ssh/id_ed25519
+            - ssh-keyscan -H "$DROPLET_IP" >> ~/.ssh/known_hosts
+            - |
+              ssh -i ~/.ssh/id_ed25519 deploy@"$DROPLET_IP" '
+                set -e
+                cd /opt/kvcdr-carb-calculator
+                git pull origin main
+                docker compose up -d --build
+                docker image prune -f
+              '
