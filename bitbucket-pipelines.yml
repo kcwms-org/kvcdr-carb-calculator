@@ -38,6 +38,7 @@ pipelines:
           services:
             - docker
           script:
+            - export DOCKER_BUILDKIT=0
             - echo "$DO_API_TOKEN" | docker login registry.digitalocean.com -u do --password-stdin
             - docker build -t registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest .
             - docker push registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest
