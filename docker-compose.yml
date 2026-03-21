@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    image: kvcdr-carb-calculator:latest
+    image: registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest
     ports:
       - "3000:3000"
     env_file:
