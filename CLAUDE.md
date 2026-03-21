@@ -56,6 +56,37 @@ CACHE_TTL_SECS=86400
 SERVER_PORT=3000
 ```
 
+## Deployment
+
+The app is deployed to a Digital Ocean Droplet (`143.244.174.42`) via Bitbucket Pipelines. The pipeline builds a Docker image, pushes it to Digital Ocean Container Registry (DOCR), then SSHes into the droplet to pull and run it.
+
+### Bitbucket Pipeline Repo Variables
+
+Set these in **Repository Settings → Pipelines → Repository variables**:
+
+| Variable | Description | Secured |
+|---|---|---|
+| `DO_API_TOKEN` | Digital Ocean API token — used to authenticate with DOCR | Yes |
+| `SSH_PRIVATE_KEY` | Contents of `~/.ssh/id_ed25519` — used to SSH into the droplet | Yes |
+| `DROPLET_IP` | Droplet IP address (`143.244.174.42`) | No |
+| `DROPLET_HOST_KEY` | Output of `ssh-keyscan -H <droplet-ip>` — prevents MITM on SSH | Yes |
+
+### DOCR
+
+Registry: `registry.digitalocean.com/kvcdr-registry`
+Image: `registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest`
+
+### One-Time Droplet Setup
+
+```bash
+sudo mkdir -p /opt/kvcdr-carb-calculator
+sudo chown kevin:kevin /opt/kvcdr-carb-calculator
+cd /opt/kvcdr-carb-calculator
+git clone git@bitbucket.org:kevcoder1/kvcdr-carb-calculator.git .
+cp .env.example .env
+# edit .env with ANTHROPIC_API_KEY and other required values
+```
+
 ## Adding a New AI Engine
 
 1. Add `src/engines/<name>.rs` implementing the `AiEngine` trait

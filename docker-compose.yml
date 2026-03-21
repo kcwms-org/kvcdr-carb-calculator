@@ -1,4 +1,18 @@
 services:
+  app:
+    build: .
+    image: registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Override so app addresses Redis by Docker service name, not localhost
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     ports:
