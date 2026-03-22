@@ -67,9 +67,9 @@ Set these in **Repository Settings → Pipelines → Repository variables**:
 | Variable | Description | Secured |
 |---|---|---|
 | `DO_API_TOKEN` | Digital Ocean API token — used to authenticate with DOCR | Yes |
-| `SSH_PRIVATE_KEY` | Contents of `~/.ssh/id_ed25519` — used to SSH into the droplet | Yes |
+| `SSH_PRIVATE_KEY` | Base64-encoded contents of `~/.ssh/id_ed25519` — used to SSH into the droplet | Yes |
 | `DROPLET_IP` | Droplet IP address (`143.244.174.42`) | No |
-| `DROPLET_HOST_KEY` | Output of `ssh-keyscan -H <droplet-ip>` — prevents MITM on SSH | Yes |
+| `DROPLET_HOST_KEY_BASE_64` | Base64-encoded output of `ssh-keyscan -H <droplet-ip>` — prevents MITM on SSH | Yes |
 
 ### DOCR
 

@@ -52,7 +52,7 @@ pipelines:
             - mkdir -p ~/.ssh
             - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_ed25519
             - chmod 600 ~/.ssh/id_ed25519
-            - echo "$DROPLET_HOST_KEY" >> ~/.ssh/known_hosts
+            - echo "$DROPLET_HOST_KEY_BASE_64" | base64 -d >> ~/.ssh/known_hosts
             - |
               ssh -i ~/.ssh/id_ed25519 kevin@"$DROPLET_IP" "
                 set -e
