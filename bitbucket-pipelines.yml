@@ -1,10 +1,6 @@
 image: rust:1-slim-bookworm
 
 definitions:
-  services:
-    docker:
-      memory: 2048
-
   caches:
     cargo-registry:
       key:
@@ -32,32 +28,3 @@ pipelines:
             - cargo clippy --locked -- -D warnings
             - cargo test --locked
 
-      - step:
-          name: Push to Registry
-          image: docker:27
-          services:
-            - docker
-          script:
-            - export DOCKER_BUILDKIT=0
-            - echo "$DO_API_TOKEN" | docker login registry.digitalocean.com -u do --password-stdin
-            - docker build -t registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest .
-            - docker push registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest
-
-      - step:
-          name: Deploy to Digital Ocean
-          image: debian:bookworm-slim
-          deployment: production
-          script:
-            - apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-client
-            - mkdir -p ~/.ssh
-            - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_ed25519
-            - chmod 600 ~/.ssh/id_ed25519
-            - echo "$DROPLET_HOST_KEY_BASE_64" | base64 -d >> ~/.ssh/known_hosts
-            - |
-              ssh -i ~/.ssh/id_ed25519 kevin@"$DROPLET_IP" "
-                set -e
-                echo '$DO_API_TOKEN' | docker login registry.digitalocean.com -u do --password-stdin
-                docker compose -f /opt/kvcdr-carb-calculator/docker-compose.yml pull
-                docker compose -f /opt/kvcdr-carb-calculator/docker-compose.yml up -d
-                docker image prune -f
-              "
