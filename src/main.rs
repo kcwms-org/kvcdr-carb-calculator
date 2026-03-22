@@ -7,7 +7,7 @@ mod routes;
 
 use std::sync::Arc;
 
-use axum::{routing::post, Router};
+use axum::{routing::{get, post}, Router};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -32,6 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState { engine, cache };
 
     let app = Router::new()
+        .route("/health", get(|| async { "OK" }))
         .route("/analyze", post(analyze_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
