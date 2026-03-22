@@ -50,9 +50,7 @@ pipelines:
           script:
             - apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-client
             - mkdir -p ~/.ssh
-            - echo "SSH_PRIVATE_KEY length=${#SSH_PRIVATE_KEY}"
-            - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_ed25519 || echo "base64 decode failed"
-            - echo "Decoded key lines=$(wc -l < ~/.ssh/id_ed25519) size=$(wc -c < ~/.ssh/id_ed25519)"
+            - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_ed25519
             - chmod 600 ~/.ssh/id_ed25519
             - echo "$DROPLET_HOST_KEY" >> ~/.ssh/known_hosts
             - |
