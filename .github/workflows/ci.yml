@@ -81,6 +81,7 @@ jobs:
           DROPLET_IP: ${{ secrets.DROPLET_IP }}
           DROPLET_HOST_KEY_BASE_64: ${{ secrets.DROPLET_HOST_KEY_BASE_64 }}
         run: |
+          mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" | base64 -d > /tmp/deploy_key
           chmod 600 /tmp/deploy_key
           echo "$DROPLET_HOST_KEY_BASE_64" | base64 -d >> ~/.ssh/known_hosts
