@@ -15,12 +15,6 @@ cargo test          # Run tests
 cargo clippy        # Lint
 ```
 
-## Workflow Rules
-
-- All features and bug fixes must be developed on a new branch — never commit directly to `main`.
-- Commit as soon as a change builds successfully.
-- Push to the remote (`origin`) as soon as all commits on the branch build and all tests (if any) pass.
-
 ## Architecture
 
 ```
