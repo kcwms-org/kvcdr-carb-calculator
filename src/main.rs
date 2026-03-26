@@ -10,11 +10,26 @@ use std::sync::Arc;
 use axum::{routing::{get, post}, Router};
 use tower_http::cors::CorsLayer;
 use tracing::info;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use cache::AnalysisCache;
 use config::Config;
 use engines::build_engine;
 use routes::analyze::{analyze_handler, AppState};
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(routes::analyze::analyze_handler),
+    components(schemas(models::FoodItem, models::AnalyzeResponse)),
+    tags((name = "analyze", description = "Carbohydrate analysis endpoints")),
+    info(
+        title = "kvcdr-carb-calculator",
+        version = "0.1.0",
+        description = "Estimates carbohydrates per food item using Claude vision AI"
+    )
+)]
+struct ApiDoc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -32,6 +47,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState { engine, cache };
 
     let app = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(|| async { "OK" }))
         .route("/analyze", post(analyze_handler))
         .layer(CorsLayer::permissive())
