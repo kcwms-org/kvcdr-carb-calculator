@@ -18,6 +18,17 @@ pub struct AppState {
     pub cache: AnalysisCache,
 }
 
+/// Estimate carbohydrates from a food image or text description.
+#[utoipa::path(
+    post,
+    path = "/analyze",
+    responses(
+        (status = 200, description = "Carb breakdown per food item", body = AnalyzeResponse),
+        (status = 400, description = "Missing or invalid input"),
+        (status = 502, description = "AI engine error"),
+    ),
+    tag = "analyze"
+)]
 pub async fn analyze_handler(
     State(state): State<AppState>,
     mut multipart: Multipart,

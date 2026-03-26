@@ -17,6 +17,8 @@ sha2 = "0.10"
 async-trait = "0.1"
 base64 = "0.22"
 tower-http = { version = "0.5", features = ["cors"] }
+utoipa = { version = "4", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "7", features = ["axum"] }
 hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
