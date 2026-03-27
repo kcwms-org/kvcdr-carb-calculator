@@ -52,34 +52,11 @@ SERVER_PORT=3000
 
 ## Deployment
 
-The app is deployed to a Digital Ocean Droplet (`143.244.174.42`) via Bitbucket Pipelines. The pipeline builds a Docker image, pushes it to Digital Ocean Container Registry (DOCR), then SSHes into the droplet to pull and run it.
+The app is deployed via **DigitalOcean App Platform** (ATL region, $5/mo shared CPU).
 
-### Bitbucket Pipeline Repo Variables
-
-Set these in **Repository Settings → Pipelines → Repository variables**:
-
-| Variable | Description | Secured |
-|---|---|---|
-| `DO_API_TOKEN` | Digital Ocean API token — used to authenticate with DOCR | Yes |
-| `SSH_PRIVATE_KEY` | Base64-encoded contents of `~/.ssh/id_ed25519` — used to SSH into the droplet | Yes |
-| `DROPLET_IP` | Droplet IP address (`143.244.174.42`) | No |
-| `DROPLET_HOST_KEY_BASE_64` | Base64-encoded output of `ssh-keyscan -H <droplet-ip>` — prevents MITM on SSH | Yes |
-
-### DOCR
-
-Registry: `registry.digitalocean.com/kvcdr-registry`
-Image: `registry.digitalocean.com/kvcdr-registry/kvcdr-carb-calculator:latest`
-
-### One-Time Droplet Setup
-
-```bash
-sudo mkdir -p /opt/kvcdr-carb-calculator
-sudo chown kevin:kevin /opt/kvcdr-carb-calculator
-cd /opt/kvcdr-carb-calculator
-git clone git@bitbucket.org:kevcoder1/kvcdr-carb-calculator.git .
-cp .env.example .env
-# edit .env with ANTHROPIC_API_KEY and other required values
-```
+- Pushes to `main` trigger an automatic rebuild and redeploy — no pipeline step needed
+- Custom domain: `carb-calculator.kevcoder.com`
+- Env vars (`ANTHROPIC_API_KEY`, `DEFAULT_ENGINE`, `CACHE_TTL_SECS`, `SERVER_PORT`) are configured in the App Platform dashboard
 
 ## Adding a New AI Engine
 
