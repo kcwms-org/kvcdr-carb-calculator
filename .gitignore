@@ -1,2 +1,4 @@
 /target
 .env
+*.b64
+host_key_base_64
