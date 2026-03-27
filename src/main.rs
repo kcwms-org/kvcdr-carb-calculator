@@ -21,7 +21,7 @@ use routes::analyze::{analyze_handler, AppState};
 #[derive(OpenApi)]
 #[openapi(
     paths(routes::analyze::analyze_handler),
-    components(schemas(models::FoodItem, models::AnalyzeResponse)),
+    components(schemas(models::FoodItem, models::AnalyzeResponse, routes::analyze::AnalyzeRequest)),
     tags((name = "analyze", description = "Carbohydrate analysis endpoints")),
     info(
         title = "kvcdr-carb-calculator",
