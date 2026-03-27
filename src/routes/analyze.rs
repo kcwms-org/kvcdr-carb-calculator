@@ -4,6 +4,7 @@ use axum::{
     extract::{Multipart, State},
     Json,
 };
+use utoipa::ToSchema;
 
 use crate::{
     cache::AnalysisCache,
@@ -18,10 +19,25 @@ pub struct AppState {
     pub cache: AnalysisCache,
 }
 
+/// Multipart form fields for /analyze
+#[derive(ToSchema)]
+#[allow(dead_code)]
+pub struct AnalyzeRequest {
+    /// Food image file (JPEG, PNG, GIF, or WebP)
+    #[schema(format = Binary, value_type = String)]
+    image: Option<Vec<u8>>,
+    /// Text description of the food
+    text: Option<String>,
+}
+
 /// Estimate carbohydrates from a food image or text description.
 #[utoipa::path(
     post,
     path = "/analyze",
+    request_body(
+        content = AnalyzeRequest,
+        content_type = "multipart/form-data"
+    ),
     responses(
         (status = 200, description = "Carb breakdown per food item", body = AnalyzeResponse),
         (status = 400, description = "Missing or invalid input"),
