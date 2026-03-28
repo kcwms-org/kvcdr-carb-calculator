@@ -11,12 +11,14 @@ use crate::{
     engines::{AiEngine, AnalysisInput},
     error::AppError,
     models::AnalyzeResponse,
+    spaces::SpacesClient,
 };
 
 #[derive(Clone)]
 pub struct AppState {
     pub engine: Arc<dyn AiEngine>,
     pub cache: AnalysisCache,
+    pub spaces: Option<SpacesClient>,
 }
 
 /// Multipart form fields for /analyze
