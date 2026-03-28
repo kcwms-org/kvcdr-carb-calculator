@@ -7,7 +7,7 @@ mod routes;
 
 use std::sync::Arc;
 
-use axum::{routing::{get, post}, Router};
+use axum::{extract::DefaultBodyLimit, routing::{get, post}, Router};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use utoipa::OpenApi;
@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(|| async { "OK" }))
         .route("/analyze", post(analyze_handler))
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024)) // 20 MB — phone camera photos can exceed the 2 MB default
         .layer(CorsLayer::permissive())
         .with_state(state);
 
