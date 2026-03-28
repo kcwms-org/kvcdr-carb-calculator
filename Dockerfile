@@ -14,8 +14,8 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs
 RUN cargo build --release --locked
 RUN rm -f target/release/kvcdr-carb-calculator* target/release/deps/kvcdr_carb_calculator*
 
-# Copy .git so build.rs can embed the commit SHA via git rev-parse
-COPY .git ./.git
+# .version is written by CI on push to main; build.rs reads it to embed the SHA
+COPY .version* ./
 COPY src ./src
 RUN cargo build --release --locked
 
