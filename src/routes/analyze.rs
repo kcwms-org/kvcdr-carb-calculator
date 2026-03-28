@@ -56,7 +56,14 @@ pub async fn analyze_handler(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| AppError::MultipartError(e.to_string()))?
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("length limit") || msg.contains("too large") || msg.contains("bytes") {
+                AppError::MultipartError("Image exceeds the maximum upload size of 20 MB".to_string())
+            } else {
+                AppError::MultipartError(msg)
+            }
+        })?
     {
         match field.name() {
             Some("image") => {
@@ -67,7 +74,14 @@ pub async fn analyze_handler(
                 let bytes = field
                     .bytes()
                     .await
-                    .map_err(|e| AppError::MultipartError(e.to_string()))?;
+                    .map_err(|e| {
+                        let msg = e.to_string();
+                        if msg.contains("length limit") || msg.contains("too large") || msg.contains("bytes") {
+                            AppError::MultipartError("Image exceeds the maximum upload size of 20 MB".to_string())
+                        } else {
+                            AppError::MultipartError(msg)
+                        }
+                    })?;
                 if !bytes.is_empty() {
                     image_mime = Some(content_type);
                     image_bytes = Some(bytes.to_vec());
