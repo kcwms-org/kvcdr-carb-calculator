@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Project
 
-`kvcdr-carb-calculator` — Rust/Axum HTTP API that estimates carbohydrates per food item using Claude vision AI. Supports multipart image upload, text-only, or combined input.
+`kvcdr-carb-calculator` — Rust/Axum HTTP API that estimates carbohydrates per food item using Claude vision AI. Supports multipart image upload, pre-uploaded image URL (recommended for large files), text-only, or combined input.
 
 ## Commands
 
@@ -34,11 +34,16 @@ src/
 ## Endpoint
 
 `POST /analyze` — multipart/form-data fields:
-- `image` — optional file upload
+- `image` — optional file upload (small images only; DO App Platform enforces a ~1 MB ingress limit)
+- `image_url` — optional public URL of a pre-uploaded image (e.g. DigitalOcean Spaces); **preferred for phone camera photos** to bypass platform upload limits. Claude receives the URL directly via its `url` image source type.
 - `text` — optional text description
 - `engine` — optional engine name (default: `claude`)
 
+At least one of `image`, `image_url`, or `text` is required.
+
 Returns `AnalyzeResponse` JSON with per-item carb breakdown, total, engine used, and cache hit flag.
+
+> **Note on image upload size:** DO App Platform's ingress proxy limits request bodies to ~1 MB. For large images (phone camera photos are typically 3–10 MB), upload the image directly to DO Spaces from the client and pass the resulting public URL as `image_url`. The API will forward the URL to Claude — no large bytes traverse the platform.
 
 ## Environment Variables
 

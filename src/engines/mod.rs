@@ -7,6 +7,7 @@ pub mod claude;
 pub struct AnalysisInput {
     pub image_bytes: Option<Vec<u8>>,
     pub image_mime: Option<String>,
+    pub image_url: Option<String>,
     pub text: Option<String>,
 }
 
