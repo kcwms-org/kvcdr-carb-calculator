@@ -9,11 +9,13 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # Cache dependencies separately from source
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs
 RUN cargo build --release --locked
 RUN rm -f target/release/kvcdr-carb-calculator* target/release/deps/kvcdr_carb_calculator*
 
+# .version is written by CI on push to main; build.rs reads it to embed the SHA
+COPY .version* ./
 COPY src ./src
 RUN cargo build --release --locked
 
