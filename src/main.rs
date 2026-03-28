@@ -31,6 +31,12 @@ use routes::analyze::{analyze_handler, AppState};
 )]
 struct ApiDoc;
 
+fn openapi() -> utoipa::openapi::OpenApi {
+    let mut doc = ApiDoc::openapi();
+    doc.info.version = format!("{}+{}", doc.info.version, env!("GIT_HASH"));
+    doc
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -47,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState { engine, cache };
 
     let app = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi()))
         .route("/health", get(|| async { "OK" }))
         .route("/analyze", post(analyze_handler))
         .layer(DefaultBodyLimit::max(20 * 1024 * 1024)) // 20 MB — phone camera photos can exceed the 2 MB default
