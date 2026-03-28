@@ -72,6 +72,7 @@ fn make_server(engine: Arc<dyn AiEngine>) -> TestServer {
     let state = AppState {
         engine,
         cache: AnalysisCache::new(60, None),
+        spaces: None,
     };
     let app = Router::new()
         .route("/analyze", post(analyze_handler))
@@ -154,6 +155,7 @@ async fn engine_error_returns_502() {
     let state = AppState {
         engine: Arc::new(FailingEngine),
         cache: AnalysisCache::new(60, None),
+        spaces: None,
     };
     let app = Router::new()
         .route("/analyze", post(analyze_handler))

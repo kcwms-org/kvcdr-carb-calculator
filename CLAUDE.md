@@ -27,11 +27,13 @@ src/
 │   ├── mod.rs            # AiEngine trait + build_engine factory
 │   └── claude.rs         # ClaudeEngine — calls Anthropic API with vision
 ├── cache/mod.rs          # Moka async cache wrapper (SHA-256 keyed, 24h TTL)
+├── spaces.rs             # SpacesClient — presigned PUT + delete via AWS S3-compatible API
 └── routes/
-    └── analyze.rs        # POST /analyze multipart handler
+    ├── analyze.rs        # POST /analyze multipart handler
+    └── presign.rs        # GET /presign, DELETE /upload/{key}
 ```
 
-## Endpoint
+## Endpoints
 
 `POST /analyze` — multipart/form-data fields:
 - `image` — optional file upload (small images only; DO App Platform enforces a ~1 MB ingress limit)
@@ -43,7 +45,15 @@ At least one of `image`, `image_url`, or `text` is required.
 
 Returns `AnalyzeResponse` JSON with per-item carb breakdown, total, engine used, and cache hit flag.
 
-> **Note on image upload size:** DO App Platform's ingress proxy limits request bodies to ~1 MB. For large images (phone camera photos are typically 3–10 MB), upload the image directly to DO Spaces from the client and pass the resulting public URL as `image_url`. The API will forward the URL to Claude — no large bytes traverse the platform.
+`GET /presign` — returns a presigned PUT URL for the client to upload directly to DO Spaces, plus the public `image_url` to pass to `/analyze` and a `key` for cleanup. Requires Spaces env vars.
+
+`DELETE /upload/{key}` — deletes a temporary Spaces object after analysis. Requires Spaces env vars.
+
+> **Recommended flow for large images (phone camera photos):**
+> 1. `GET /presign` → get `upload_url`, `image_url`, `key`
+> 2. `PUT {upload_url}` with image bytes directly from client
+> 3. `POST /analyze` with `image_url`
+> 4. `DELETE /upload/{key}` to clean up
 
 ## Environment Variables
 
@@ -53,6 +63,12 @@ ANTHROPIC_API_KEY=...
 DEFAULT_ENGINE=claude
 CACHE_TTL_SECS=86400
 SERVER_PORT=3000
+
+# Optional — enables GET /presign and DELETE /upload/{key}
+SPACES_ACCESS_KEY=...
+SPACES_SECRET_KEY=...
+SPACES_REGION=nyc3
+SPACES_BUCKET=s3-kvcdr
 ```
 
 ## Deployment
@@ -61,7 +77,7 @@ The app is deployed via **DigitalOcean App Platform** (ATL region, $5/mo shared 
 
 - Pushes to `main` trigger an automatic rebuild and redeploy — no pipeline step needed
 - Custom domain: `carb-calculator.kevcoder.com`
-- Env vars (`ANTHROPIC_API_KEY`, `DEFAULT_ENGINE`, `CACHE_TTL_SECS`, `SERVER_PORT`) are configured in the App Platform dashboard
+- Env vars (`ANTHROPIC_API_KEY`, `DEFAULT_ENGINE`, `CACHE_TTL_SECS`, `SERVER_PORT`, `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`) are configured in the App Platform dashboard
 
 ## Adding a New AI Engine
 
