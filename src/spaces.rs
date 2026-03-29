@@ -52,7 +52,6 @@ impl SpacesClient {
             .put_object()
             .bucket(&self.bucket)
             .key(&key)
-            .acl(aws_sdk_s3::types::ObjectCannedAcl::PublicRead)
             .presigned(presigning_config)
             .await
             .map_err(|e| AppError::SpacesError(e.to_string()))?;
