@@ -39,6 +39,7 @@ impl SpacesClient {
 
     /// Generate a presigned PUT URL the client can use to upload an image directly to Spaces.
     /// Returns `(presigned_put_url, public_image_url, object_key)`.
+    /// The caller must include `x-amz-acl: public-read` in the PUT request headers.
     pub async fn presign_put(&self) -> Result<(String, String, String), AppError> {
         let key = format!("tmp/{}", Uuid::new_v4());
 
@@ -52,6 +53,7 @@ impl SpacesClient {
             .put_object()
             .bucket(&self.bucket)
             .key(&key)
+            .acl(aws_sdk_s3::types::ObjectCannedAcl::PublicRead)
             .presigned(presigning_config)
             .await
             .map_err(|e| AppError::SpacesError(e.to_string()))?;

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{extract::State, Json};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -12,6 +14,8 @@ pub struct PresignResponse {
     pub image_url: String,
     /// Object key — pass this to DELETE /upload/{key} after analysis to clean up
     pub key: String,
+    /// Headers the client MUST include in the PUT request to upload_url
+    pub required_headers: HashMap<String, String>,
 }
 
 /// Get a presigned PUT URL for uploading an image directly to object storage.
@@ -39,10 +43,14 @@ pub async fn presign_handler(
 
     let (upload_url, image_url, key) = spaces.presign_put().await?;
 
+    let mut required_headers = HashMap::new();
+    required_headers.insert("x-amz-acl".to_string(), "public-read".to_string());
+
     Ok(Json(PresignResponse {
         upload_url,
         image_url,
         key,
+        required_headers,
     }))
 }
 
