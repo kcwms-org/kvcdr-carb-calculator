@@ -45,13 +45,22 @@ At least one of `image`, `image_url`, or `text` is required.
 
 Returns `AnalyzeResponse` JSON with per-item carb breakdown, total, engine used, and cache hit flag.
 
-`GET /presign` — returns a presigned PUT URL for the client to upload directly to DO Spaces, plus the public `image_url` to pass to `/analyze` and a `key` for cleanup. Requires Spaces env vars.
+`GET /presign` — returns a presigned PUT URL for the client to upload directly to DO Spaces (`s3-kvcdr`, `nyc3`). Response:
+```json
+{
+  "upload_url": "https://s3-kvcdr.nyc3.digitaloceanspaces.com/tmp/<uuid>?...",
+  "image_url": "https://s3-kvcdr.nyc3.digitaloceanspaces.com/tmp/<uuid>",
+  "key": "tmp/<uuid>",
+  "required_headers": { "x-amz-acl": "public-read" }
+}
+```
+The client **must** send all `required_headers` with the PUT or DO Spaces will reject it. Requires Spaces env vars.
 
 `DELETE /upload/{key}` — deletes a temporary Spaces object after analysis. Requires Spaces env vars.
 
 > **Recommended flow for large images (phone camera photos):**
-> 1. `GET /presign` → get `upload_url`, `image_url`, `key`
-> 2. `PUT {upload_url}` with image bytes directly from client
+> 1. `GET /presign` → get `upload_url`, `image_url`, `key`, `required_headers`
+> 2. `PUT {upload_url}` with image bytes and all `required_headers` (e.g. `x-amz-acl: public-read`)
 > 3. `POST /analyze` with `image_url`
 > 4. `DELETE /upload/{key}` to clean up
 
