@@ -1,5 +1,7 @@
 # Plan: Semantic/AI-engine-level caching (Issue #19)
 
+**Status:** Done — merged via PR #21
+
 ## Overview
 
 Replace the current single-phase analysis with a two-phase pipeline:
