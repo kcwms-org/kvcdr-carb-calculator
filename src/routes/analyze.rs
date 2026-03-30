@@ -8,7 +8,7 @@ use utoipa::ToSchema;
 
 use crate::{
     cache::AnalysisCache,
-    engines::{AiEngine, AnalysisInput},
+    engines::{AiEngine, AnalysisInput, ExtractionEngine},
     error::AppError,
     models::AnalyzeResponse,
     spaces::SpacesClient,
@@ -16,7 +16,8 @@ use crate::{
 
 #[derive(Clone)]
 pub struct AppState {
-    pub engine: Arc<dyn AiEngine>,
+    pub extraction_engine: Arc<dyn ExtractionEngine>,
+    pub reasoning_engine: Arc<dyn AiEngine>,
     pub cache: AnalysisCache,
     pub spaces: Option<SpacesClient>,
 }
@@ -122,12 +123,21 @@ pub async fn analyze_handler(
         ));
     }
 
-    let engine_name = state.engine.name().to_string();
+    // Phase 1: extraction — identify food items from image/text
+    let extraction_input = AnalysisInput {
+        image_bytes: image_bytes.clone(),
+        image_mime: image_mime.clone(),
+        image_url: image_url.clone(),
+        text: text.clone(),
+    };
+    let extraction_result = state.extraction_engine.extract(extraction_input).await?;
 
+    // Cache key derived from normalized extraction output
+    let reasoning_model = state.reasoning_engine.name().to_string();
     let cache_key = AnalysisCache::cache_key(
-        &engine_name,
-        text.as_deref(),
-        image_bytes.as_deref(),
+        &reasoning_model,
+        &extraction_result.version,
+        &extraction_result.items,
     );
 
     if let Some(cached_items) = state.cache.get(&cache_key).await {
@@ -135,19 +145,19 @@ pub async fn analyze_handler(
         return Ok(Json(AnalyzeResponse {
             items: cached_items,
             total_carbs_grams: total,
-            engine_used: engine_name,
+            engine_used: reasoning_model,
             cached: true,
         }));
     }
 
-    let input = AnalysisInput {
+    // Phase 2: reasoning — estimate carbs per item
+    let reasoning_input = AnalysisInput {
         image_bytes,
         image_mime,
         image_url,
         text,
     };
-
-    let items = state.engine.analyze(input).await?;
+    let items = state.reasoning_engine.analyze(reasoning_input).await?;
     let total = items.iter().map(|i| i.carbs_grams).sum();
 
     state.cache.set(cache_key, items.clone()).await;
@@ -155,7 +165,7 @@ pub async fn analyze_handler(
     Ok(Json(AnalyzeResponse {
         items,
         total_carbs_grams: total,
-        engine_used: engine_name,
+        engine_used: reasoning_model,
         cached: false,
     }))
 }

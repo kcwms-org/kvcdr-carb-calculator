@@ -16,7 +16,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use cache::AnalysisCache;
 use config::Config;
-use engines::build_engine;
+use engines::{build_engine, build_extraction_engine};
 use routes::analyze::{analyze_handler, AppState};
 use routes::presign::{delete_upload_handler, presign_handler};
 use spaces::SpacesClient;
@@ -54,7 +54,8 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::from_env()?;
     let cache = AnalysisCache::new(config.cache_ttl_secs, config.redis_url.as_deref());
-    let engine = Arc::from(build_engine(&config.default_engine, &config)?);
+    let extraction_engine = Arc::from(build_extraction_engine(&config.default_engine, &config)?);
+    let reasoning_engine = Arc::from(build_engine(&config.default_engine, &config)?);
 
     let spaces = match (&config.spaces_key, &config.spaces_secret) {
         (Some(key), Some(secret)) => {
@@ -67,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let state = AppState { engine, cache, spaces };
+    let state = AppState { extraction_engine, reasoning_engine, cache, spaces };
 
     let app = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi()))

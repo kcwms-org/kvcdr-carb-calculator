@@ -23,8 +23,6 @@ hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 redis = { version = "0.27", features = ["tokio-comp"] }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
-image_hasher = "3.1"
 aws-sdk-s3 = { version = "1.127.0", features = ["behavior-version-latest"] }
 aws-config = { version = "1.8.15", features = ["behavior-version-latest"] }
 uuid = { version = "1.23.0", features = ["v4"] }
@@ -32,3 +30,4 @@ uuid = { version = "1.23.0", features = ["v4"] }
 [dev-dependencies]
 axum-test = "15"
 tokio = { version = "1", features = ["full"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }

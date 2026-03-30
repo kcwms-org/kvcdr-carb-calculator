@@ -1,14 +1,11 @@
 use std::time::Duration;
 
-use image_hasher::{HashAlg, HasherConfig, ImageHash};
 use moka::future::Cache;
 use redis::AsyncCommands;
 use sha2::{Digest, Sha256};
 use tracing::{debug, warn};
 
-use crate::models::FoodItem;
-
-const PHASH_HAMMING_THRESHOLD: u32 = 10;
+use crate::models::{ExtractedItem, FoodItem};
 
 #[derive(Clone)]
 pub struct AnalysisCache {
@@ -40,22 +37,23 @@ impl AnalysisCache {
         Self { moka, redis, ttl_secs }
     }
 
-    /// Build a cache key from engine name + text + image.
-    /// For images, uses perceptual hash so near-identical images share a key.
-    /// Falls back to SHA-256 of raw bytes if image cannot be decoded.
-    pub fn cache_key(engine: &str, text: Option<&str>, image_bytes: Option<&[u8]>) -> String {
+    /// Build a cache key from reasoning model name, extraction schema version,
+    /// and the sorted list of extracted items. Items are sorted by name so that
+    /// the same meal described in different word order produces the same key.
+    pub fn cache_key(
+        reasoning_model: &str,
+        extraction_version: &str,
+        items: &[ExtractedItem],
+    ) -> String {
+        let mut sorted: Vec<&ExtractedItem> = items.iter().collect();
+        sorted.sort_by(|a, b| a.item.cmp(&b.item));
+
+        let canonical = serde_json::to_string(&sorted).unwrap_or_default();
+
         let mut hasher = Sha256::new();
-        hasher.update(engine.as_bytes());
-
-        if let Some(t) = text {
-            hasher.update(t.trim().to_lowercase().as_bytes());
-        }
-
-        if let Some(img) = image_bytes {
-            let phash = perceptual_hash(img);
-            hasher.update(phash.as_bytes());
-        }
-
+        hasher.update(reasoning_model.as_bytes());
+        hasher.update(extraction_version.as_bytes());
+        hasher.update(canonical.as_bytes());
         hex::encode(hasher.finalize())
     }
 
@@ -113,62 +111,4 @@ impl AnalysisCache {
             }
         }
     }
-}
-
-/// Compute a perceptual hash string for image bytes.
-/// Returns a canonical hex string that is the same for near-identical images
-/// (Hamming distance ≤ PHASH_HAMMING_THRESHOLD).
-///
-/// Near-identical images are bucketed by quantising the hash: we zero out the
-/// lowest bits so images within the threshold map to the same bucket key.
-/// Falls back to SHA-256 hex of raw bytes if the image cannot be decoded.
-fn perceptual_hash(image_bytes: &[u8]) -> String {
-    let img = match image::load_from_memory(image_bytes) {
-        Ok(img) => img,
-        Err(_) => {
-            let mut h = Sha256::new();
-            h.update(image_bytes);
-            return hex::encode(h.finalize());
-        }
-    };
-
-    // Gradient pHash needs at least ~32x32 source pixels to produce meaningful
-    // hashes; resize up if the image is smaller.
-    let img = if img.width() < 32 || img.height() < 32 {
-        img.resize(32, 32, image::imageops::FilterType::Lanczos3)
-    } else {
-        img
-    };
-
-    let hasher = HasherConfig::new()
-        .hash_alg(HashAlg::Gradient)
-        .hash_size(8, 8)
-        .to_hasher();
-
-    let hash: ImageHash = hasher.hash_image(&img);
-
-    // Bucket by zeroing bits whose position < threshold so that hashes within
-    // Hamming distance ≤ PHASH_HAMMING_THRESHOLD collapse to the same key.
-    bucket_hash(&hash, PHASH_HAMMING_THRESHOLD)
-}
-
-/// Zero out the lowest `threshold` bits of the hash bytes so that hashes
-/// differing by at most `threshold` bits land in the same bucket.
-fn bucket_hash(hash: &ImageHash, threshold: u32) -> String {
-    let mut bytes = hash.as_bytes().to_vec();
-    let mut bits_to_zero = threshold;
-    for byte in bytes.iter_mut().rev() {
-        if bits_to_zero == 0 {
-            break;
-        }
-        if bits_to_zero >= 8 {
-            *byte = 0;
-            bits_to_zero -= 8;
-        } else {
-            let mask = 0xFFu8 << bits_to_zero;
-            *byte &= mask;
-            bits_to_zero = 0;
-        }
-    }
-    hex::encode(bytes)
 }
