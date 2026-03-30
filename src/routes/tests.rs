@@ -3,17 +3,37 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::{routing::post, Router};
 use axum_test::TestServer;
-use image::{ImageBuffer, Rgb};
 
 use crate::{
     cache::AnalysisCache,
-    engines::{AiEngine, AnalysisInput},
+    engines::{AiEngine, AnalysisInput, ExtractionEngine},
     error::AppError,
-    models::FoodItem,
+    models::{ExtractedItem, ExtractionResult, FoodItem},
     routes::analyze::{analyze_handler, AppState},
 };
 
-// --- Mock engine ---
+// --- Mock engines ---
+
+struct MockExtractionEngine {
+    result: ExtractionResult,
+}
+
+impl MockExtractionEngine {
+    fn returning(result: ExtractionResult) -> Arc<Self> {
+        Arc::new(Self { result })
+    }
+}
+
+#[async_trait]
+impl ExtractionEngine for MockExtractionEngine {
+    fn name(&self) -> &str {
+        "mock-extraction"
+    }
+
+    async fn extract(&self, _input: AnalysisInput) -> Result<ExtractionResult, AppError> {
+        Ok(self.result.clone())
+    }
+}
 
 struct MockEngine {
     items: Vec<FoodItem>,
@@ -28,7 +48,7 @@ impl MockEngine {
 #[async_trait]
 impl AiEngine for MockEngine {
     fn name(&self) -> &str {
-        "mock"
+        "mock-reasoning"
     }
 
     async fn analyze(&self, _input: AnalysisInput) -> Result<Vec<FoodItem>, AppError> {
@@ -68,9 +88,31 @@ fn test_items() -> Vec<FoodItem> {
     ]
 }
 
-fn make_server(engine: Arc<dyn AiEngine>) -> TestServer {
+fn test_extraction_result() -> ExtractionResult {
+    ExtractionResult {
+        version: "1".to_string(),
+        items: vec![
+            ExtractedItem {
+                item: "oatmeal".to_string(),
+                quantity: "1".to_string(),
+                quantity_type: "cup".to_string(),
+            },
+            ExtractedItem {
+                item: "banana".to_string(),
+                quantity: "1".to_string(),
+                quantity_type: "individual".to_string(),
+            },
+        ],
+    }
+}
+
+fn make_server(
+    extraction: Arc<dyn ExtractionEngine>,
+    reasoning: Arc<dyn AiEngine>,
+) -> TestServer {
     let state = AppState {
-        engine,
+        extraction_engine: extraction,
+        reasoning_engine: reasoning,
         cache: AnalysisCache::new(60, None),
         spaces: None,
     };
@@ -80,23 +122,14 @@ fn make_server(engine: Arc<dyn AiEngine>) -> TestServer {
     TestServer::new(app).unwrap()
 }
 
-/// Encode a 32x32 pixel grid as PNG bytes.
-fn encode_png_32(pixels: &[[u8; 3]; 1024]) -> Vec<u8> {
-    let img = ImageBuffer::from_fn(32, 32, |x, y| Rgb(pixels[(y * 32 + x) as usize]));
-    let mut buf = Vec::new();
-    img.write_to(
-        &mut std::io::Cursor::new(&mut buf),
-        image::ImageFormat::Png,
-    )
-    .unwrap();
-    buf
-}
-
 // --- Handler tests ---
 
 #[tokio::test]
 async fn text_only_returns_items_and_total() {
-    let server = make_server(MockEngine::returning(test_items()));
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
 
     let response = server
         .post("/analyze")
@@ -110,13 +143,16 @@ async fn text_only_returns_items_and_total() {
     let body: serde_json::Value = response.json();
     assert_eq!(body["items"].as_array().unwrap().len(), 2);
     assert_eq!(body["total_carbs_grams"], 54.0);
-    assert_eq!(body["engine_used"], "mock");
+    assert_eq!(body["engine_used"], "mock-reasoning");
     assert_eq!(body["cached"], false);
 }
 
 #[tokio::test]
 async fn second_identical_request_is_cached() {
-    let server = make_server(MockEngine::returning(test_items()));
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
 
     let multipart = || {
         axum_test::multipart::MultipartForm::new()
@@ -134,7 +170,10 @@ async fn second_identical_request_is_cached() {
 
 #[tokio::test]
 async fn missing_input_returns_400() {
-    let server = make_server(MockEngine::returning(vec![]));
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(vec![]),
+    );
 
     // Whitespace-only text — handler rejects with 400
     let response = server
@@ -153,7 +192,8 @@ async fn missing_input_returns_400() {
 #[tokio::test]
 async fn engine_error_returns_502() {
     let state = AppState {
-        engine: Arc::new(FailingEngine),
+        extraction_engine: MockExtractionEngine::returning(test_extraction_result()),
+        reasoning_engine: Arc::new(FailingEngine),
         cache: AnalysisCache::new(60, None),
         spaces: None,
     };
@@ -177,55 +217,42 @@ async fn engine_error_returns_502() {
 
 // --- Cache key unit tests ---
 
-#[tokio::test]
-async fn cache_key_is_case_and_whitespace_insensitive() {
-    let key1 = AnalysisCache::cache_key("claude", Some("  Oatmeal  "), None);
-    let key2 = AnalysisCache::cache_key("claude", Some("oatmeal"), None);
-    assert_eq!(key1, key2);
+#[test]
+fn cache_key_stable_for_same_items_different_order() {
+    let items_a = vec![
+        ExtractedItem { item: "bacon".to_string(), quantity: "3".to_string(), quantity_type: "strip".to_string() },
+        ExtractedItem { item: "scrambled egg".to_string(), quantity: "2".to_string(), quantity_type: "individual".to_string() },
+    ];
+    let items_b = vec![
+        ExtractedItem { item: "scrambled egg".to_string(), quantity: "2".to_string(), quantity_type: "individual".to_string() },
+        ExtractedItem { item: "bacon".to_string(), quantity: "3".to_string(), quantity_type: "strip".to_string() },
+    ];
+    assert_eq!(
+        AnalysisCache::cache_key("claude-sonnet-4-6", "1", &items_a),
+        AnalysisCache::cache_key("claude-sonnet-4-6", "1", &items_b),
+    );
 }
 
-#[tokio::test]
-async fn cache_key_differs_by_engine() {
-    let key1 = AnalysisCache::cache_key("claude", Some("oatmeal"), None);
-    let key2 = AnalysisCache::cache_key("other", Some("oatmeal"), None);
-    assert_ne!(key1, key2);
+#[test]
+fn cache_key_differs_by_reasoning_model() {
+    let items = vec![
+        ExtractedItem { item: "scrambled egg".to_string(), quantity: "2".to_string(), quantity_type: "individual".to_string() },
+    ];
+    assert_ne!(
+        AnalysisCache::cache_key("claude-sonnet-4-6", "1", &items),
+        AnalysisCache::cache_key("claude-haiku-4-5", "1", &items),
+    );
 }
 
-#[tokio::test]
-async fn cache_key_differs_for_very_different_images() {
-    // Horizontal gradient vs vertical gradient — maximally different pHashes
-    let mut h_grad = [[0u8; 3]; 1024];
-    let mut v_grad = [[0u8; 3]; 1024];
-    for i in 0..1024usize {
-        let hv = ((i % 32) * 8) as u8;
-        let vv = ((i / 32) * 8) as u8;
-        h_grad[i] = [hv, hv, hv];
-        v_grad[i] = [vv, vv, vv];
-    }
-
-    let key1 = AnalysisCache::cache_key("claude", None, Some(&encode_png_32(&h_grad)));
-    let key2 = AnalysisCache::cache_key("claude", None, Some(&encode_png_32(&v_grad)));
-    assert_ne!(key1, key2, "structurally different images should have different cache keys");
-}
-
-#[tokio::test]
-async fn cache_key_same_for_near_identical_images() {
-    // Two images differing by a single pixel value should share a cache key
-    let mut base = [[200u8; 3]; 1024];
-    let mut tweaked = base;
-    tweaked[0] = [201, 200, 200]; // 1-pixel difference
-
-    // Ensure the base has a gradient so pHash is non-zero
-    for i in 0..1024usize {
-        let v = ((i % 32) * 8) as u8;
-        base[i] = [v, v, v];
-        tweaked[i] = [v, v, v];
-    }
-    tweaked[0] = [base[0][0].saturating_add(1), base[0][1], base[0][2]];
-
-    let key1 = AnalysisCache::cache_key("claude", None, Some(&encode_png_32(&base)));
-    let key2 = AnalysisCache::cache_key("claude", None, Some(&encode_png_32(&tweaked)));
-    assert_eq!(key1, key2, "near-identical images should share a cache key");
+#[test]
+fn cache_key_differs_by_extraction_version() {
+    let items = vec![
+        ExtractedItem { item: "scrambled egg".to_string(), quantity: "2".to_string(), quantity_type: "individual".to_string() },
+    ];
+    assert_ne!(
+        AnalysisCache::cache_key("claude-sonnet-4-6", "1", &items),
+        AnalysisCache::cache_key("claude-sonnet-4-6", "2", &items),
+    );
 }
 
 // --- Moka fallback (no Redis configured) ---
