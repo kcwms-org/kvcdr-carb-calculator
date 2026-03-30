@@ -29,6 +29,7 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /app/target/release/kvcdr-carb-calculator ./kvcdr-carb-calculator
+COPY prompts ./prompts
 
 RUN useradd --no-create-home --shell /bin/false appuser
 USER appuser
