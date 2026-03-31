@@ -28,9 +28,9 @@ impl Config {
             anthropic_api_key: env::var("ANTHROPIC_API_KEY")
                 .context("ANTHROPIC_API_KEY must be set")?,
             ai_extraction_model: env::var("AI_EXTRACTION_MODEL")
-                .unwrap_or_else(|_| default_engine.clone()),
+                .unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string()),
             ai_reasoning_model: env::var("AI_REASONING_MODEL")
-                .unwrap_or_else(|_| default_engine.clone()),
+                .unwrap_or_else(|_| "claude-sonnet-4-6".to_string()),
             extraction_prompt: std::fs::read_to_string("prompts/extraction.txt")
                 .context("Failed to read prompts/extraction.txt")?,
             reasoning_prompt: std::fs::read_to_string("prompts/reasoning.txt")
