@@ -56,6 +56,7 @@ pub async fn analyze_handler(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<Json<AnalyzeResponse>, AppError> {
+    tracing::info!("analyze request received");
     let mut image_bytes: Option<Vec<u8>> = None;
     let mut image_mime: Option<String> = None;
     let mut image_url: Option<String> = None;
@@ -118,10 +119,19 @@ pub async fn analyze_handler(
     }
 
     if image_bytes.is_none() && image_url.is_none() && text.is_none() {
+        tracing::warn!("request rejected: no image or text provided");
         return Err(AppError::InvalidRequest(
             "Either 'image' or 'text' field is required".to_string(),
         ));
     }
+
+    tracing::info!(
+        has_image = image_bytes.is_some(),
+        has_image_url = image_url.is_some(),
+        has_text = text.is_some(),
+        image_bytes = image_bytes.as_ref().map(|b| b.len()).unwrap_or(0),
+        "input parsed"
+    );
 
     // Phase 1: extraction — identify food items from image/text
     let extraction_input = AnalysisInput {
@@ -130,7 +140,9 @@ pub async fn analyze_handler(
         image_url: image_url.clone(),
         text: text.clone(),
     };
+    tracing::info!("phase 1: extraction start");
     let extraction_result = state.extraction_engine.extract(extraction_input).await?;
+    tracing::info!(items = extraction_result.items.len(), "phase 1: extraction complete");
 
     // Cache key derived from normalized extraction output
     let reasoning_model = state.reasoning_engine.name().to_string();
@@ -141,6 +153,7 @@ pub async fn analyze_handler(
     );
 
     if let Some(cached_items) = state.cache.get(&cache_key).await {
+        tracing::info!("cache hit — skipping phase 2");
         let total = cached_items.iter().map(|i| i.carbs_grams).sum();
         return Ok(Json(AnalyzeResponse {
             items: cached_items,
@@ -151,6 +164,7 @@ pub async fn analyze_handler(
     }
 
     // Phase 2: reasoning — estimate carbs per item
+    tracing::info!("phase 2: reasoning start");
     let reasoning_input = AnalysisInput {
         image_bytes,
         image_mime,
@@ -158,6 +172,7 @@ pub async fn analyze_handler(
         text,
     };
     let items = state.reasoning_engine.analyze(reasoning_input).await?;
+    tracing::info!(items = items.len(), "phase 2: reasoning complete");
     let total = items.iter().map(|i| i.carbs_grams).sum();
 
     state.cache.set(cache_key, items.clone()).await;

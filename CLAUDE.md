@@ -88,6 +88,15 @@ The app is deployed via **DigitalOcean App Platform** (ATL region, $5/mo shared 
 - Custom domain: `carb-calculator.kevcoder.com`
 - Env vars (`ANTHROPIC_API_KEY`, `DEFAULT_ENGINE`, `CACHE_TTL_SECS`, `SERVER_PORT`, `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`) are configured in the App Platform dashboard
 
+## PR Workflow
+
+After pushing a PR, if the user explicitly asks to monitor and auto-merge:
+1. Start a background poll loop checking `gh pr checks <number> --watch`
+2. Once all checks pass, merge with `gh pr merge <number> --squash --auto` (or `--merge` if squash is not appropriate)
+3. Report the result
+
+Only do this when explicitly asked — do not auto-merge by default.
+
 ## Adding a New AI Engine
 
 1. Add `src/engines/<name>.rs` implementing the `AiEngine` trait
