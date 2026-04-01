@@ -97,6 +97,60 @@ After pushing a PR, if the user explicitly asks to monitor and auto-merge:
 
 Only do this when explicitly asked — do not auto-merge by default.
 
+## Logging (Loki + Grafana)
+
+The app emits structured JSON logs to stdout. Locally, logs are shipped to Loki via Promtail and visualised in Grafana.
+
+### Start the logging stack
+
+```bash
+docker compose up loki promtail grafana -d
+```
+
+Or start everything together:
+
+```bash
+docker compose up --build -d
+```
+
+### Grafana UI
+
+`http://localhost:3001` — credentials: `admin` / `admin`
+
+Navigate to **Explore → Loki** and query:
+
+```
+{job="carb-calculator"}
+```
+
+Filter by level:
+
+```
+{job="carb-calculator", level="error"}
+```
+
+### Loki readiness check
+
+```bash
+curl -s http://localhost:3100/ready   # → "ready"
+```
+
+### Query Loki directly
+
+```bash
+curl -G -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={job="carb-calculator"}' \
+  --data-urlencode "start=$(date -d '5 minutes ago' +%s)000000000" \
+  --data-urlencode "end=$(date +%s)000000000" | jq '.data.result[].values[][1]'
+```
+
+### Notes
+
+- `docker compose logs app` now emits raw JSON (one object per line) — this is expected
+- Grafana runs on port **3001** to avoid clashing with the app on 3000
+- Loki data is persisted in the `loki_data` Docker volume; Grafana state in `grafana_data`
+- The Loki datasource is auto-provisioned from `grafana/provisioning/datasources/loki.yml` — no manual UI setup needed
+
 ## Adding a New AI Engine
 
 1. Add `src/engines/<name>.rs` implementing the `AiEngine` trait
