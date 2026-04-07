@@ -98,22 +98,25 @@ SSH into the droplet and run the deployment script:
 
 ```bash
 ssh root@45.55.157.195
-curl -fsSL https://raw.githubusercontent.com/kvcdr/carb-calculator/main/scripts/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kcwms-org/kvcdr-carb-calculator/main/scripts/deploy.sh | bash
 ```
 
-This installs Docker, clones the repo, and starts the stack.
+This clones the repo and writes `.env` from `/etc/environment`. The droplet is assumed to have Docker and Docker Compose pre-installed.
+
+Then start the stack:
+
+```bash
+docker compose --project-directory /opt/carb-calculator up --build -d
+```
 
 ### Deploying Changes
-
-Push to `main` — the droplet will be set up with a deploy key and pull/restart automatically (optional cron job or webhook).
 
 For manual deploys:
 
 ```bash
 ssh root@45.55.157.195
-cd /opt/carb-calculator
-git pull origin main
-docker compose up --build -d
+curl -fsSL https://raw.githubusercontent.com/kcwms-org/kvcdr-carb-calculator/main/scripts/deploy.sh | bash
+docker compose --project-directory /opt/carb-calculator up --build -d
 ```
 
 ### Domain
@@ -122,20 +125,19 @@ Point your DNS to `45.55.157.195` for `carb-calculator.kevcoder.com`. Optionally
 
 ### Env Vars
 
-Create `.env` on the droplet before first deploy:
+Secrets are stored in `/etc/environment` on the droplet (set once, never committed). The deploy script reads these and writes `.env` on every deploy.
 
-```
-ANTHROPIC_API_KEY=...
-DEFAULT_ENGINE=claude
-CACHE_TTL_SECS=86400
-SERVER_PORT=3000
+```bash
+# On the droplet — set once:
+cat >> /etc/environment << 'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
 SPACES_ACCESS_KEY=...
 SPACES_SECRET_KEY=...
 SPACES_REGION=nyc3
 SPACES_BUCKET=s3-kvcdr
+EOF
+chmod 600 /etc/environment
 ```
-
-The deploy script creates this file; edit it post-deploy if needed.
 
 ## PR Workflow
 
