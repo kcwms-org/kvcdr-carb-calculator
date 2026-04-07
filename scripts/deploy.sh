@@ -1,71 +1,57 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "🚀 Deploying carb-calculator stack..."
+echo "Deploying carb-calculator stack..."
 
-# Update system
-apt-get update && apt-get upgrade -y
-
-# Install Docker
-if ! command -v docker &> /dev/null; then
-    echo "📦 Installing Docker..."
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    bash /tmp/get-docker.sh
-    rm /tmp/get-docker.sh
+# Load system-wide environment variables (where secrets are stored on the droplet)
+if [ -f /etc/environment ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source /etc/environment
+    set +a
 fi
 
-if ! command -v docker-compose &> /dev/null; then
-    echo "📦 Installing Docker Compose..."
-    curl -fsSL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
-    chmod +x /usr/local/bin/docker-compose
-fi
-
-# Clone repo
+# Clone repo or pull latest
 if [ ! -d /opt/carb-calculator ]; then
-    echo "📂 Cloning repository..."
-    git clone https://github.com/kvcdr/carb-calculator.git /opt/carb-calculator
+    echo "Cloning repository..."
+    git clone https://github.com/kcwms-org/kvcdr-carb-calculator.git /opt/carb-calculator
 else
-    echo "✅ Repository already exists, updating..."
+    echo "Repository already exists, updating..."
     cd /opt/carb-calculator && git pull origin main
 fi
 
 cd /opt/carb-calculator
 
-# Create .env if it doesn't exist
-if [ ! -f .env ]; then
-    echo "📝 Creating .env template..."
-    cat > .env << 'EOF'
-# Required
-ANTHROPIC_API_KEY=sk-...
-
-# Optional
-DEFAULT_ENGINE=claude
-CACHE_TTL_SECS=86400
-SERVER_PORT=3000
-
-# Optional — Spaces (for presigned uploads)
-SPACES_ACCESS_KEY=
-SPACES_SECRET_KEY=
-SPACES_REGION=nyc3
-SPACES_BUCKET=s3-kvcdr
+# Write .env from environment variables (overwrites each deploy to pick up any changes)
+echo "Writing .env from environment variables..."
+cat > .env << EOF
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+DEFAULT_ENGINE=${DEFAULT_ENGINE:-claude}
+CACHE_TTL_SECS=${CACHE_TTL_SECS:-86400}
+SERVER_PORT=${SERVER_PORT:-3000}
+SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-}
+SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-}
+SPACES_REGION=${SPACES_REGION:-nyc3}
+SPACES_BUCKET=${SPACES_BUCKET:-s3-kvcdr}
 EOF
-    echo "⚠️  Edit /opt/carb-calculator/.env with your ANTHROPIC_API_KEY before starting"
+chmod 600 .env
+
+# Warn if required key is missing
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "WARNING: ANTHROPIC_API_KEY is not set in /etc/environment — app will fail to start"
 fi
 
-# Start services
-echo "🐳 Starting Docker Compose stack..."
-docker compose up --build -d
-
 echo ""
-echo "✅ Deployment complete!"
+echo "Setup complete!"
 echo ""
-echo "Services running:"
+echo "Start the stack:"
+echo "  docker compose --project-directory /opt/carb-calculator up --build -d"
+echo ""
+echo "View logs:"
+echo "  docker compose --project-directory /opt/carb-calculator logs -f app"
+echo ""
+echo "Services:"
 echo "  - API:     http://localhost:3000"
 echo "  - Grafana: http://localhost:3001 (admin / admin)"
 echo "  - Loki:    http://localhost:3100"
-echo ""
-echo "Next steps:"
-echo "  1. Edit /opt/carb-calculator/.env with your API keys"
-echo "  2. Restart: docker compose -C /opt/carb-calculator restart app"
-echo "  3. View logs: docker compose -C /opt/carb-calculator logs -f app"
 echo ""
