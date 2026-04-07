@@ -82,11 +82,60 @@ SPACES_BUCKET=s3-kvcdr
 
 ## Deployment
 
-The app is deployed via **DigitalOcean App Platform** (ATL region, $5/mo shared CPU).
+Deployed to a DigitalOcean droplet (NYC3, 1vCPU / 1GB RAM, $6/mo) running Docker Compose.
 
-- Pushes to `main` trigger an automatic rebuild and redeploy — no pipeline step needed
-- Custom domain: `carb-calculator.kevcoder.com`
-- Env vars (`ANTHROPIC_API_KEY`, `DEFAULT_ENGINE`, `CACHE_TTL_SECS`, `SERVER_PORT`, `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`) are configured in the App Platform dashboard
+**Droplet:** `carb-calculator-prod` at `45.55.157.195`
+
+**Services:**
+- API: `:3000`
+- Grafana: `:3001`
+- Loki: `:3100`
+- Promtail: ships logs to Loki
+
+### Initial Setup (one-time)
+
+SSH into the droplet and run the deployment script:
+
+```bash
+ssh root@45.55.157.195
+curl -fsSL https://raw.githubusercontent.com/kvcdr/carb-calculator/main/scripts/deploy.sh | bash
+```
+
+This installs Docker, clones the repo, and starts the stack.
+
+### Deploying Changes
+
+Push to `main` — the droplet will be set up with a deploy key and pull/restart automatically (optional cron job or webhook).
+
+For manual deploys:
+
+```bash
+ssh root@45.55.157.195
+cd /opt/carb-calculator
+git pull origin main
+docker compose up --build -d
+```
+
+### Domain
+
+Point your DNS to `45.55.157.195` for `carb-calculator.kevcoder.com`. Optionally configure Cloudflare or another proxy for SSL.
+
+### Env Vars
+
+Create `.env` on the droplet before first deploy:
+
+```
+ANTHROPIC_API_KEY=...
+DEFAULT_ENGINE=claude
+CACHE_TTL_SECS=86400
+SERVER_PORT=3000
+SPACES_ACCESS_KEY=...
+SPACES_SECRET_KEY=...
+SPACES_REGION=nyc3
+SPACES_BUCKET=s3-kvcdr
+```
+
+The deploy script creates this file; edit it post-deploy if needed.
 
 ## PR Workflow
 
