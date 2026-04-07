@@ -129,20 +129,21 @@ Point your DNS to `45.55.157.195` for `carb-calculator.kevcoder.com`. Optionally
 
 ### Env Vars
 
-Create `.env` on the droplet before first deploy:
+Secrets are stored in `/etc/environment` on the droplet (set once, never committed). The deploy script reads these and writes `.env` on every deploy.
 
-```
-ANTHROPIC_API_KEY=...
-DEFAULT_ENGINE=claude
-CACHE_TTL_SECS=86400
-SERVER_PORT=3000
+```bash
+# On the droplet — set once:
+cat >> /etc/environment << 'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
 SPACES_ACCESS_KEY=...
 SPACES_SECRET_KEY=...
 SPACES_REGION=nyc3
 SPACES_BUCKET=s3-kvcdr
+EOF
+chmod 600 /etc/environment
 ```
 
-The deploy script creates this file; edit it post-deploy if needed.
+The deploy script auto-generates `.env` from these values with sensible defaults for non-secret settings.
 
 ## PR Workflow
 

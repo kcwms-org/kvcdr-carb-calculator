@@ -3,6 +3,14 @@ set -euo pipefail
 
 echo "Deploying carb-calculator stack..."
 
+# Load system-wide environment variables (where secrets are stored on the droplet)
+if [ -f /etc/environment ]; then
+    set -a
+    # shellcheck source=/dev/null
+    source /etc/environment
+    set +a
+fi
+
 # Clone repo or pull latest
 if [ ! -d /opt/carb-calculator ]; then
     echo "Cloning repository..."
@@ -14,35 +22,35 @@ fi
 
 cd /opt/carb-calculator
 
-# Create .env if it doesn't exist
-if [ ! -f .env ]; then
-    echo "Creating .env template..."
-    cat > .env << 'EOF'
-# Required
-ANTHROPIC_API_KEY=sk-...
-
-# Optional
-DEFAULT_ENGINE=claude
-CACHE_TTL_SECS=86400
-SERVER_PORT=3000
-
-# Optional — Spaces (for presigned uploads)
-SPACES_ACCESS_KEY=
-SPACES_SECRET_KEY=
-SPACES_REGION=nyc3
-SPACES_BUCKET=s3-kvcdr
+# Write .env from environment variables (overwrites each deploy to pick up any changes)
+echo "Writing .env from environment variables..."
+cat > .env << EOF
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+DEFAULT_ENGINE=${DEFAULT_ENGINE:-claude}
+CACHE_TTL_SECS=${CACHE_TTL_SECS:-86400}
+SERVER_PORT=${SERVER_PORT:-3000}
+SPACES_ACCESS_KEY=${SPACES_ACCESS_KEY:-}
+SPACES_SECRET_KEY=${SPACES_SECRET_KEY:-}
+SPACES_REGION=${SPACES_REGION:-nyc3}
+SPACES_BUCKET=${SPACES_BUCKET:-s3-kvcdr}
 EOF
+chmod 600 .env
+
+# Warn if required key is missing
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    echo "WARNING: ANTHROPIC_API_KEY is not set in /etc/environment — app will fail to start"
 fi
 
 echo ""
 echo "Setup complete!"
 echo ""
-echo "Next steps:"
-echo "  1. Edit /opt/carb-calculator/.env with your ANTHROPIC_API_KEY"
-echo "  2. Start: docker compose --project-directory /opt/carb-calculator up --build -d"
-echo "  3. View logs: docker compose --project-directory /opt/carb-calculator logs -f app"
+echo "Start the stack:"
+echo "  docker compose --project-directory /opt/carb-calculator up --build -d"
 echo ""
-echo "Services (once started):"
+echo "View logs:"
+echo "  docker compose --project-directory /opt/carb-calculator logs -f app"
+echo ""
+echo "Services:"
 echo "  - API:     http://localhost:3000"
 echo "  - Grafana: http://localhost:3001 (admin / admin)"
 echo "  - Loki:    http://localhost:3100"
