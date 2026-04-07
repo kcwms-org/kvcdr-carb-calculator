@@ -98,10 +98,17 @@ SSH into the droplet and run the deployment script:
 
 ```bash
 ssh root@45.55.157.195
-curl -fsSL https://raw.githubusercontent.com/kvcdr/carb-calculator/main/scripts/deploy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kcwms-org/kvcdr-carb-calculator/main/scripts/deploy.sh | bash
 ```
 
-This installs Docker, clones the repo, and starts the stack.
+This clones the repo and writes a `.env` template. The droplet is assumed to have Docker and Docker Compose pre-installed.
+
+After the script exits, fill in the API key, then start the stack:
+
+```bash
+nano /opt/carb-calculator/.env   # set ANTHROPIC_API_KEY
+docker compose --project-directory /opt/carb-calculator up --build -d
+```
 
 ### Deploying Changes
 
