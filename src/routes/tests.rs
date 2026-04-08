@@ -270,3 +270,208 @@ async fn moka_cache_works_without_redis() {
     assert!(result.is_some());
     assert_eq!(result.unwrap().len(), 2);
 }
+
+// --- Datetime validation tests ---
+
+#[tokio::test]
+async fn datetime_defaults_to_server_time_when_omitted() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal"),
+        )
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+
+    // Should have a datetime field
+    assert!(body["datetime"].is_string());
+    // Datetime should be ISO 8601 / RFC 3339
+    let datetime_str = body["datetime"].as_str().unwrap();
+    assert!(datetime_str.contains('T')); // ISO format marker
+    assert!(datetime_str.ends_with('Z')); // UTC marker
+}
+
+#[tokio::test]
+async fn datetime_accepts_valid_rfc3339() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal")
+                .add_text("datetime", "2026-04-08T12:00:00Z"),
+        )
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+
+    assert!(body["datetime"].is_string());
+    assert_eq!(body["datetime"], "2026-04-08T12:00:00Z");
+}
+
+#[tokio::test]
+async fn datetime_rejects_future_timestamp() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal")
+                .add_text("datetime", "2099-12-31T23:59:59Z"),
+        )
+        .await;
+
+    response.assert_status_bad_request();
+    let body: serde_json::Value = response.json();
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("must not be in the future"));
+}
+
+#[tokio::test]
+async fn datetime_rejects_invalid_format() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal")
+                .add_text("datetime", "not-a-datetime"),
+        )
+        .await;
+
+    response.assert_status_bad_request();
+    let body: serde_json::Value = response.json();
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("RFC 3339 timestamp"));
+}
+
+#[tokio::test]
+async fn datetime_accepts_various_valid_formats() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    // Test with timezone offset
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal")
+                .add_text("datetime", "2026-04-08T12:00:00-05:00"),
+        )
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+    assert!(body["datetime"].is_string());
+}
+
+// --- Image response tests ---
+
+#[tokio::test]
+async fn images_array_present_in_response() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal"),
+        )
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+
+    // images field should be an empty array when no image uploaded
+    assert!(body["images"].is_array());
+    assert_eq!(body["images"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn datetime_and_images_both_in_response() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let response = server
+        .post("/analyze")
+        .multipart(
+            axum_test::multipart::MultipartForm::new()
+                .add_text("text", "oatmeal")
+                .add_text("datetime", "2026-04-08T08:30:00Z"),
+        )
+        .await;
+
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+
+    // Both fields should be present
+    assert!(body["datetime"].is_string());
+    assert!(body["images"].is_array());
+
+    // datetime should match input
+    assert_eq!(body["datetime"], "2026-04-08T08:30:00Z");
+}
+
+#[tokio::test]
+async fn cached_response_includes_datetime_and_images() {
+    let server = make_server(
+        MockExtractionEngine::returning(test_extraction_result()),
+        MockEngine::returning(test_items()),
+    );
+
+    let datetime = "2026-04-08T08:30:00Z";
+    let multipart = || {
+        axum_test::multipart::MultipartForm::new()
+            .add_text("text", "oatmeal with banana")
+            .add_text("datetime", datetime)
+    };
+
+    // First request
+    let first = server.post("/analyze").multipart(multipart()).await;
+    first.assert_status_ok();
+    let first_body: serde_json::Value = first.json();
+    assert_eq!(first_body["cached"], false);
+    assert_eq!(first_body["datetime"], datetime);
+    assert!(first_body["images"].is_array());
+
+    // Second request (cached)
+    let second = server.post("/analyze").multipart(multipart()).await;
+    second.assert_status_ok();
+    let second_body: serde_json::Value = second.json();
+    assert_eq!(second_body["cached"], true);
+    // datetime and images should still be present
+    assert_eq!(second_body["datetime"], datetime);
+    assert!(second_body["images"].is_array());
+}
