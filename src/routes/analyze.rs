@@ -4,13 +4,15 @@ use axum::{
     extract::{Multipart, State},
     Json,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use chrono::{DateTime, Utc};
 use utoipa::ToSchema;
 
 use crate::{
     cache::AnalysisCache,
     engines::{AiEngine, AnalysisInput, ExtractionEngine},
     error::AppError,
-    models::AnalyzeResponse,
+    models::{AnalyzeResponse, ImageData},
     spaces::SpacesClient,
 };
 
@@ -35,6 +37,9 @@ pub struct AnalyzeRequest {
     image_url: Option<String>,
     /// Text description of the food
     text: Option<String>,
+    /// ISO 8601 / RFC 3339 datetime of the meal (e.g. 2026-04-08T12:00:00Z).
+    /// Must not be in the future. Defaults to server time if omitted.
+    datetime: Option<String>,
 }
 
 /// Estimate carbohydrates from a food image or text description.
@@ -61,6 +66,7 @@ pub async fn analyze_handler(
     let mut image_mime: Option<String> = None;
     let mut image_url: Option<String> = None;
     let mut text: Option<String> = None;
+    let mut datetime_input: Option<String> = None;
 
     while let Some(field) = multipart
         .next_field()
@@ -114,6 +120,15 @@ pub async fn analyze_handler(
                     text = Some(value);
                 }
             }
+            Some("datetime") => {
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::MultipartError(e.to_string()))?;
+                if !value.trim().is_empty() {
+                    datetime_input = Some(value.trim().to_string());
+                }
+            }
             _ => {}
         }
     }
@@ -123,6 +138,33 @@ pub async fn analyze_handler(
         return Err(AppError::InvalidRequest(
             "Either 'image' or 'text' field is required".to_string(),
         ));
+    }
+
+    // Parse and validate datetime
+    let datetime: DateTime<Utc> = match datetime_input {
+        Some(s) => {
+            let parsed = DateTime::parse_from_rfc3339(&s)
+                .map_err(|_| AppError::InvalidRequest(
+                    "datetime must be a valid RFC 3339 timestamp (e.g. 2026-04-08T12:00:00Z)".to_string()
+                ))?
+                .with_timezone(&Utc);
+            if parsed > Utc::now() {
+                return Err(AppError::InvalidRequest(
+                    "datetime must not be in the future".to_string()
+                ));
+            }
+            parsed
+        }
+        None => Utc::now(),
+    };
+
+    // Collect images for response (only uploaded bytes, not URLs)
+    let mut response_images: Vec<ImageData> = Vec::new();
+    if let (Some(bytes), Some(mime)) = (&image_bytes, &image_mime) {
+        response_images.push(ImageData {
+            data: BASE64.encode(bytes),
+            mime_type: mime.clone(),
+        });
     }
 
     tracing::info!(
@@ -160,6 +202,8 @@ pub async fn analyze_handler(
             total_carbs_grams: total,
             engine_used: reasoning_model,
             cached: true,
+            datetime,
+            images: response_images,
         }));
     }
 
@@ -182,5 +226,7 @@ pub async fn analyze_handler(
         total_carbs_grams: total,
         engine_used: reasoning_model,
         cached: false,
+        datetime,
+        images: response_images,
     }))
 }
