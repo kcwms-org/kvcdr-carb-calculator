@@ -1,6 +1,6 @@
 # Plan: Add datetime input and return full-sized images from /analyze
 
-**Status:** In progress — tracked in [kcwms-org/kvcdr-carb-calculator#29](https://github.com/kcwms-org/kvcdr-carb-calculator/issues/29)
+**Status:** Done — merged via PR #30
 
 ## Context
 
