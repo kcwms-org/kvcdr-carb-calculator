@@ -54,7 +54,6 @@ impl SpacesClient {
             .bucket(&self.bucket)
             .key(&key)
             .acl(aws_sdk_s3::types::ObjectCannedAcl::PublicRead)
-            .content_type("image/jpeg")
             .presigned(presigning_config)
             .await
             .map_err(|e| AppError::SpacesError(e.to_string()))?;
