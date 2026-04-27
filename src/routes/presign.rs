@@ -22,7 +22,7 @@ pub struct PresignResponse {
 ///
 /// Workflow:
 /// 1. `GET /presign` — get `upload_url`, `image_url`, and `key`
-/// 2. `PUT {upload_url}` — upload the image bytes directly (Content-Type: image/jpeg etc.)
+/// 2. `PUT {upload_url}` — upload the image bytes directly with headers from `required_headers`
 /// 3. `POST /analyze` with `image_url` — analyze the image
 /// 4. `DELETE /upload/{key}` — delete the temporary object
 #[utoipa::path(
@@ -45,7 +45,6 @@ pub async fn presign_handler(
 
     let mut required_headers = HashMap::new();
     required_headers.insert("x-amz-acl".to_string(), "public-read".to_string());
-    required_headers.insert("Content-Type".to_string(), "image/jpeg".to_string());
 
     Ok(Json(PresignResponse {
         upload_url,
