@@ -1,10 +1,19 @@
 use std::collections::HashMap;
 
-use axum::{extract::State, Json};
-use serde::Serialize;
+use axum::{
+    extract::{Query, State},
+    Json,
+};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{error::AppError, routes::analyze::AppState};
+
+#[derive(Deserialize)]
+pub struct PresignQuery {
+    /// Content-Type header value (default: application/octet-stream)
+    pub content_type: Option<String>,
+}
 
 #[derive(Serialize, ToSchema)]
 pub struct PresignResponse {
@@ -20,14 +29,18 @@ pub struct PresignResponse {
 
 /// Get a presigned PUT URL for uploading an image directly to object storage.
 ///
+/// Query parameters:
+/// - `content_type` (optional) — MIME type for the upload (default: application/octet-stream)
+///
 /// Workflow:
-/// 1. `GET /presign` — get `upload_url`, `image_url`, and `key`
-/// 2. `PUT {upload_url}` — upload the image bytes directly (Content-Type: image/jpeg etc.)
+/// 1. `GET /presign?content_type=image/png` — get `upload_url`, `image_url`, and `key`
+/// 2. `PUT {upload_url}` — upload the image bytes directly with headers from `required_headers`
 /// 3. `POST /analyze` with `image_url` — analyze the image
 /// 4. `DELETE /upload/{key}` — delete the temporary object
 #[utoipa::path(
     get,
     path = "/presign",
+    params(("content_type", Query, description = "MIME type (e.g., image/png, image/jpeg)")),
     responses(
         (status = 200, description = "Presigned upload URL", body = PresignResponse),
         (status = 503, description = "Object storage not configured"),
@@ -36,6 +49,7 @@ pub struct PresignResponse {
 )]
 pub async fn presign_handler(
     State(state): State<AppState>,
+    Query(params): Query<PresignQuery>,
 ) -> Result<Json<PresignResponse>, AppError> {
     let spaces = state.spaces.as_ref().ok_or_else(|| {
         AppError::SpacesError("Object storage is not configured on this server".to_string())
@@ -43,9 +57,13 @@ pub async fn presign_handler(
 
     let (upload_url, image_url, key) = spaces.presign_put().await?;
 
+    let content_type = params
+        .content_type
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+
     let mut required_headers = HashMap::new();
     required_headers.insert("x-amz-acl".to_string(), "public-read".to_string());
-    required_headers.insert("Content-Type".to_string(), "image/jpeg".to_string());
+    required_headers.insert("Content-Type".to_string(), content_type);
 
     Ok(Json(PresignResponse {
         upload_url,
