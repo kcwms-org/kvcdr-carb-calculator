@@ -45,6 +45,7 @@ pub async fn presign_handler(
 
     let mut required_headers = HashMap::new();
     required_headers.insert("x-amz-acl".to_string(), "public-read".to_string());
+    required_headers.insert("Content-Type".to_string(), "image/jpeg".to_string());
 
     Ok(Json(PresignResponse {
         upload_url,
