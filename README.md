@@ -9,22 +9,19 @@ Results are cached (moka in-process + optional Redis) so repeated requests for t
 ## Architecture
 
 ```
-POST /analyze (multipart/form-data)
+POST /analyze (multipart/form-data: image, text, datetime)
         │
         ▼
   analyze_handler
-  ├── Parse multipart fields (image, text)
-  ├── Build cache key
-  │     ├── text: normalised (trim + lowercase) → SHA-256
-  │     └── image: perceptual hash (Gradient pHash, 8×8)
-  │           └── near-identical images → same bucket (Hamming ≤ 10)
-  ├── Cache lookup  ──hit──▶  return cached AnalyzeResponse (cached: true)
-  │        │
-  │       miss
-  │        ▼
-  ├── AiEngine::analyze(AnalysisInput)
-  │     └── ClaudeEngine → Anthropic API (claude-sonnet-4-5, vision)
-  ├── Cache write (moka + Redis)
+  ├── Parse multipart fields
+  ├── Phase 1 — extraction engine identifies food items
+  ├── Build cache key from extraction output
+  ├── Cache lookup ── hit ──▶ return cached AnalyzeResponse (cached: true)
+  │       │
+  │      miss
+  │       ▼
+  ├── Phase 2 — reasoning engine estimates carbs per item
+  ├── Cache write (moka + optional Redis)
   └── return AnalyzeResponse (cached: false)
 ```
 
@@ -35,65 +32,30 @@ src/
 ├── main.rs               # Axum router, server startup
 ├── config.rs             # Config loaded from env vars (dotenvy)
 ├── error.rs              # AppError (thiserror) + IntoResponse impl
-├── models/mod.rs         # FoodItem, AnalyzeResponse
+├── models/mod.rs         # FoodItem, AnalyzeResponse, ImageData
 ├── engines/
-│   ├── mod.rs            # AiEngine trait + build_engine factory
-│   └── claude.rs         # ClaudeEngine — Anthropic API with vision support
-├── cache/mod.rs          # Two-layer cache: moka (L1) + Redis (L2)
+│   ├── mod.rs            # AiEngine + ExtractionEngine traits + factory
+│   └── claude.rs         # Claude reasoning + extraction engines
+├── cache/mod.rs          # Moka L1 + optional Redis L2 cache
 └── routes/
     ├── analyze.rs        # POST /analyze handler
     └── tests.rs          # Integration + unit tests
-```
-
-### Key types
-
-```rust
-// Input to any AI engine
-pub struct AnalysisInput {
-    pub image_bytes: Option<Vec<u8>>,
-    pub image_mime:  Option<String>,   // e.g. "image/jpeg"
-    pub text:        Option<String>,
-}
-
-// One food item returned by the engine
-pub struct FoodItem {
-    pub name:         String,
-    pub carbs_grams:  f32,
-    pub confidence:   Option<String>,  // "high" | "medium" | "low"
-    pub notes:        Option<String>,
-}
-
-// Top-level response
-pub struct AnalyzeResponse {
-    pub items:             Vec<FoodItem>,
-    pub total_carbs_grams: f32,
-    pub engine_used:       String,
-    pub cached:            bool,
-}
 ```
 
 ### Caching strategy
 
 | Layer | Backend | Scope | Notes |
 |-------|---------|-------|-------|
-| L1 | `moka::future::Cache` | in-process | max 1 000 entries, TTL-evicted |
+| L1 | `moka::future::Cache` | in-process | TTL-evicted |
 | L2 | Redis | shared / multi-instance | Redis hit backfills L1 |
 
-Cache key = SHA-256 of `engine_name + normalised_text + perceptual_image_hash`.
-Images within Hamming distance ≤ 10 of each other share the same cache bucket.
+Cache key is derived from the reasoning model name, the extraction-prompt version, and a normalised, order-independent hash of the extracted item list.
 
 ### Adding a new AI engine
 
-1. Create `src/engines/<name>.rs` implementing `AiEngine`:
-   ```rust
-   #[async_trait]
-   impl AiEngine for MyEngine {
-       fn name(&self) -> &str { "myengine" }
-       async fn analyze(&self, input: AnalysisInput) -> Result<Vec<FoodItem>, AppError> { … }
-   }
-   ```
-2. Register it in `build_engine()` in `src/engines/mod.rs`.
-3. Set `DEFAULT_ENGINE=myengine` in `.env`.
+1. Create `src/engines/<name>.rs` implementing `AiEngine` (and `ExtractionEngine` if applicable).
+2. Register it in `build_engine()` / `build_extraction_engine()` in `src/engines/mod.rs`.
+3. Set `DEFAULT_ENGINE=<name>` in `.env`.
 
 ---
 
@@ -105,16 +67,14 @@ Images within Hamming distance ≤ 10 of each other share the same cache bucket.
 - Docker + Docker Compose (for optional Redis)
 - An [Anthropic API key](https://console.anthropic.com/)
 
-### 1 — Clone and configure
+### 1 — Configure
 
 ```bash
-git clone git@bitbucket.org:kevcoder1/kvcdr-carb-calculator.git
-cd kvcdr-carb-calculator
 cp .env.example .env
 # Edit .env and set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### 2 — Start Redis (optional but recommended)
+### 2 — Start Redis (optional)
 
 ```bash
 docker compose up -d
@@ -140,22 +100,14 @@ Tests are fully offline — they use mock engines and do not require an API key 
 
 ## Deployment
 
-The service is a single stateless binary. Typical deployment steps:
+The service is deployed to **DigitalOcean App Platform**, which builds from the repo's `Dockerfile` and redeploys on every push to `main`.
 
 ```bash
-cargo build --release
-# Binary: target/release/kvcdr-carb-calculator
-
-# Set required environment variables, then run:
-ANTHROPIC_API_KEY=sk-ant-... \
-DEFAULT_ENGINE=claude \
-CACHE_TTL_SECS=86400 \
-SERVER_PORT=3000 \
-REDIS_URL=redis://your-redis-host:6379 \
-./target/release/kvcdr-carb-calculator
+doctl apps spec get 10008a08-078b-420d-81a6-2ec817254292
+doctl apps logs 10008a08-078b-420d-81a6-2ec817254292 --type run --follow
 ```
 
-For containerised deployments, build a Docker image with a `rust:slim` base and copy the release binary.
+App Platform caps request bodies at ~1 MB. Clients must resize images before upload (target ≤1 MB).
 
 ---
 
@@ -165,6 +117,8 @@ For containerised deployments, build a Docker image with a `rust:slim` base and 
 |----------|----------|---------|-------------|
 | `ANTHROPIC_API_KEY` | yes | — | Anthropic API key |
 | `DEFAULT_ENGINE` | no | `claude` | AI engine to use |
+| `AI_EXTRACTION_MODEL` | no | `claude-haiku-4-5-20251001` | Phase-1 extraction model |
+| `AI_REASONING_MODEL` | no | `claude-sonnet-4-6` | Phase-2 reasoning model |
 | `CACHE_TTL_SECS` | no | `86400` | Cache entry lifetime (seconds) |
 | `SERVER_PORT` | no | `3000` | TCP port to listen on |
 | `REDIS_URL` | no | — | Redis connection URL; moka-only if unset |
@@ -181,30 +135,23 @@ Accepts `multipart/form-data`. At least one of `image` or `text` must be provide
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `image` | file | Food photo (JPEG, PNG, GIF, WebP) |
+| `image` | file | Food photo (JPEG, PNG, GIF, WebP). Resize before upload — production caps bodies at ~1 MB. |
 | `text` | string | Text description or supplementary context |
+| `datetime` | string | Optional RFC 3339 meal timestamp; rejected if in the future |
 
 #### Response — `200 OK`
 
 ```json
 {
   "items": [
-    {
-      "name": "oatmeal",
-      "carbs_grams": 27.0,
-      "confidence": "high",
-      "notes": null
-    },
-    {
-      "name": "banana",
-      "carbs_grams": 27.0,
-      "confidence": "high",
-      "notes": null
-    }
+    { "name": "oatmeal", "carbs_grams": 27.0, "confidence": "high", "notes": null },
+    { "name": "banana",  "carbs_grams": 27.0, "confidence": "high", "notes": null }
   ],
   "total_carbs_grams": 54.0,
-  "engine_used": "claude",
-  "cached": false
+  "engine_used": "claude-sonnet-4-6",
+  "cached": false,
+  "datetime": "2026-04-08T12:00:00Z",
+  "images": []
 }
 ```
 
@@ -212,7 +159,7 @@ Accepts `multipart/form-data`. At least one of `image` or `text` must be provide
 
 | Status | Condition |
 |--------|-----------|
-| `400 Bad Request` | Neither `image` nor `text` provided, or whitespace-only text |
+| `400 Bad Request` | Neither `image` nor `text` provided, or whitespace-only text, or invalid/future datetime |
 | `422 Unprocessable Entity` | AI engine returned unparseable JSON |
 | `502 Bad Gateway` | AI engine call failed |
 | `500 Internal Server Error` | Unexpected server error |
@@ -248,20 +195,8 @@ curl -s -X POST http://localhost:3000/analyze \
 ### Verify caching — second identical request returns `cached: true`
 
 ```bash
-# First request — cache miss
-curl -s -X POST http://localhost:3000/analyze \
-  -F "text=pasta with tomato sauce" | jq .cached
+curl -s -X POST http://localhost:3000/analyze -F "text=pasta with tomato sauce" | jq .cached
 # false
-
-# Second request — cache hit
-curl -s -X POST http://localhost:3000/analyze \
-  -F "text=pasta with tomato sauce" | jq .cached
+curl -s -X POST http://localhost:3000/analyze -F "text=pasta with tomato sauce" | jq .cached
 # true
-```
-
-### Pretty-print with jq
-
-```bash
-curl -s -X POST http://localhost:3000/analyze \
-  -F "text=chicken tikka masala with basmati rice" | jq .
 ```

@@ -114,7 +114,6 @@ fn make_server(
         extraction_engine: extraction,
         reasoning_engine: reasoning,
         cache: AnalysisCache::new(60, None),
-        spaces: None,
     };
     let app = Router::new()
         .route("/analyze", post(analyze_handler))
@@ -195,7 +194,6 @@ async fn engine_error_returns_502() {
         extraction_engine: MockExtractionEngine::returning(test_extraction_result()),
         reasoning_engine: Arc::new(FailingEngine),
         cache: AnalysisCache::new(60, None),
-        spaces: None,
     };
     let app = Router::new()
         .route("/analyze", post(analyze_handler))

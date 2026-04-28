@@ -23,9 +23,6 @@ hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 redis = { version = "0.27", features = ["tokio-comp"] }
-aws-sdk-s3 = { version = "1.127.0", features = ["behavior-version-latest"] }
-aws-config = { version = "1.8.15", features = ["behavior-version-latest"] }
-uuid = { version = "1.23.0", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]

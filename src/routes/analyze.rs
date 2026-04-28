@@ -13,7 +13,6 @@ use crate::{
     engines::{AiEngine, AnalysisInput, ExtractionEngine},
     error::AppError,
     models::{AnalyzeResponse, ImageData},
-    spaces::SpacesClient,
 };
 
 #[derive(Clone)]
@@ -21,20 +20,16 @@ pub struct AppState {
     pub extraction_engine: Arc<dyn ExtractionEngine>,
     pub reasoning_engine: Arc<dyn AiEngine>,
     pub cache: AnalysisCache,
-    pub spaces: Option<SpacesClient>,
 }
 
 /// Multipart form fields for /analyze
 #[derive(ToSchema)]
 #[allow(dead_code)]
 pub struct AnalyzeRequest {
-    /// Food image file (JPEG, PNG, GIF, or WebP). Use this for small images only.
-    /// For large phone camera photos, upload to DO Spaces first and supply `image_url` instead.
+    /// Food image file (JPEG, PNG, GIF, or WebP). Clients should resize to fit
+    /// under the platform ingress limit (~1 MB on DO App Platform).
     #[schema(format = Binary, value_type = String)]
     image: Option<Vec<u8>>,
-    /// Public URL of a pre-uploaded image (e.g. DigitalOcean Spaces).
-    /// Preferred over `image` for large files to avoid platform upload limits.
-    image_url: Option<String>,
     /// Text description of the food
     text: Option<String>,
     /// ISO 8601 / RFC 3339 datetime of the meal (e.g. 2026-04-08T12:00:00Z).
@@ -64,7 +59,6 @@ pub async fn analyze_handler(
     tracing::info!("analyze request received");
     let mut image_bytes: Option<Vec<u8>> = None;
     let mut image_mime: Option<String> = None;
-    let mut image_url: Option<String> = None;
     let mut text: Option<String> = None;
     let mut datetime_input: Option<String> = None;
 
@@ -102,15 +96,6 @@ pub async fn analyze_handler(
                     image_bytes = Some(bytes.to_vec());
                 }
             }
-            Some("image_url") => {
-                let value = field
-                    .text()
-                    .await
-                    .map_err(|e| AppError::MultipartError(e.to_string()))?;
-                if !value.trim().is_empty() {
-                    image_url = Some(value.trim().to_string());
-                }
-            }
             Some("text") => {
                 let value = field
                     .text()
@@ -133,7 +118,7 @@ pub async fn analyze_handler(
         }
     }
 
-    if image_bytes.is_none() && image_url.is_none() && text.is_none() {
+    if image_bytes.is_none() && text.is_none() {
         tracing::warn!("request rejected: no image or text provided");
         return Err(AppError::InvalidRequest(
             "Either 'image' or 'text' field is required".to_string(),
@@ -158,7 +143,7 @@ pub async fn analyze_handler(
         None => Utc::now(),
     };
 
-    // Collect images for response (only uploaded bytes, not URLs)
+    // Collect images for response
     let mut response_images: Vec<ImageData> = Vec::new();
     if let (Some(bytes), Some(mime)) = (&image_bytes, &image_mime) {
         response_images.push(ImageData {
@@ -169,7 +154,6 @@ pub async fn analyze_handler(
 
     tracing::info!(
         has_image = image_bytes.is_some(),
-        has_image_url = image_url.is_some(),
         has_text = text.is_some(),
         image_bytes = image_bytes.as_ref().map(|b| b.len()).unwrap_or(0),
         "input parsed"
@@ -179,7 +163,6 @@ pub async fn analyze_handler(
     let extraction_input = AnalysisInput {
         image_bytes: image_bytes.clone(),
         image_mime: image_mime.clone(),
-        image_url: image_url.clone(),
         text: text.clone(),
     };
     tracing::info!("phase 1: extraction start");
@@ -212,7 +195,6 @@ pub async fn analyze_handler(
     let reasoning_input = AnalysisInput {
         image_bytes,
         image_mime,
-        image_url,
         text,
     };
     let items = state.reasoning_engine.analyze(reasoning_input).await?;
