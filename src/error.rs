@@ -26,9 +26,6 @@ pub enum AppError {
     #[error("HTTP client error: {0}")]
     HttpError(#[from] reqwest::Error),
 
-    #[error("Spaces error: {0}")]
-    SpacesError(String),
-
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -42,7 +39,6 @@ impl IntoResponse for AppError {
             AppError::JsonParseError(_) => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             AppError::EngineError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::HttpError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
-            AppError::SpacesError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string()),
         };
 

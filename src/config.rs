@@ -12,10 +12,6 @@ pub struct Config {
     pub cache_ttl_secs: u64,
     pub server_port: u16,
     pub redis_url: Option<String>,
-    pub spaces_key: Option<String>,
-    pub spaces_secret: Option<String>,
-    pub spaces_region: String,
-    pub spaces_bucket: String,
 }
 
 impl Config {
@@ -45,10 +41,6 @@ impl Config {
                 .parse()
                 .context("SERVER_PORT must be a valid port number")?,
             redis_url: env::var("REDIS_URL").ok(),
-            spaces_key: env::var("SPACES_ACCESS_KEY").ok(),
-            spaces_secret: env::var("SPACES_SECRET_KEY").ok(),
-            spaces_region: env::var("SPACES_REGION").unwrap_or_else(|_| "nyc3".to_string()),
-            spaces_bucket: env::var("SPACES_BUCKET").unwrap_or_else(|_| "s3-kvcdr".to_string()),
         })
     }
 }

@@ -14,15 +14,7 @@ const CLAUDE_API_URL: &str = "https://api.anthropic.com/v1/messages";
 fn build_message_content(input: &AnalysisInput) -> Vec<Value> {
     let mut content = Vec::new();
 
-    if let Some(url) = &input.image_url {
-        content.push(json!({
-            "type": "image",
-            "source": {
-                "type": "url",
-                "url": url
-            }
-        }));
-    } else if let (Some(bytes), Some(mime)) = (&input.image_bytes, &input.image_mime) {
+    if let (Some(bytes), Some(mime)) = (&input.image_bytes, &input.image_mime) {
         let encoded = BASE64.encode(bytes);
         content.push(json!({
             "type": "image",
@@ -70,7 +62,7 @@ impl AiEngine for ClaudeEngine {
     }
 
     async fn analyze(&self, input: AnalysisInput) -> Result<Vec<FoodItem>, AppError> {
-        if input.image_bytes.is_none() && input.image_url.is_none() && input.text.is_none() {
+        if input.image_bytes.is_none() && input.text.is_none() {
             return Err(AppError::InvalidRequest(
                 "Either image or text input is required".to_string(),
             ));
@@ -157,7 +149,7 @@ impl ExtractionEngine for ClaudeExtractionEngine {
     }
 
     async fn extract(&self, input: AnalysisInput) -> Result<ExtractionResult, AppError> {
-        if input.image_bytes.is_none() && input.image_url.is_none() && input.text.is_none() {
+        if input.image_bytes.is_none() && input.text.is_none() {
             return Err(AppError::InvalidRequest(
                 "Either image or text input is required".to_string(),
             ));
