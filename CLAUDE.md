@@ -99,3 +99,13 @@ Only do this when explicitly asked — do not auto-merge by default.
 
 1. Add `src/engines/<name>.rs` implementing the `AiEngine` trait (and `ExtractionEngine` if it should also handle phase-1 extraction)
 2. Register it in `build_engine()` / `build_extraction_engine()` in `src/engines/mod.rs`
+
+## Git Configuration
+
+Configure the per-repo git author name:
+
+```bash
+git config user.name "dev.ai@<machine-name>"
+```
+
+Replace `<machine-name>` with the hostname of your development machine. The git email uses the global config.
