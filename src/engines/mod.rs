@@ -11,12 +11,16 @@ pub struct AnalysisInput {
     pub text: Option<String>,
 }
 
+// clippy's double_must_use fires on the async_trait expansion, not our code
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait AiEngine: Send + Sync {
     fn name(&self) -> &str;
     async fn analyze(&self, input: AnalysisInput) -> Result<Vec<FoodItem>, AppError>;
 }
 
+// clippy's double_must_use fires on the async_trait expansion, not our code
+#[allow(clippy::double_must_use)]
 #[async_trait]
 #[allow(dead_code)]
 pub trait ExtractionEngine: Send + Sync {
