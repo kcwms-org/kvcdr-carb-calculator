@@ -44,3 +44,52 @@ jobs:
 
       - name: Test
         run: cargo test --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Upload release binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: kvcdr-carb-calculator-${{ github.sha }}
+          path: target/release/kvcdr-carb-calculator
+          if-no-files-found: error
+          retention-days: 14
+
+  docker:
+    name: Validate Docker build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: kvcdr-carb-calculator:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name carb-ci \
+            -e ANTHROPIC_API_KEY=dummy-key-for-healthcheck \
+            -p 3000:3000 kvcdr-carb-calculator:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/health; then
+              echo "health check passed"
+              docker rm -f carb-ci
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "health check never passed; container logs:"
+          docker logs carb-ci
+          docker rm -f carb-ci
+          exit 1

@@ -86,6 +86,21 @@ doctl apps create-deployment 10008a08-078b-420d-81a6-2ec817254292
 
 App Platform caps request bodies at roughly 1 MB. The API accepts up to 20 MB at the Axum layer for local-dev convenience, but in production large bodies are rejected at the platform edge before they reach the app. Clients are responsible for resizing images before upload.
 
+## CI
+
+`.github/workflows/ci.yml` runs on PRs to `main`, in two parallel jobs:
+
+- **Build, lint, and test** — `cargo build`, `cargo clippy -D warnings`, `cargo test`, then a
+  `cargo build --release` whose binary is uploaded as the run artifact
+  `kvcdr-carb-calculator-<sha>` (retained 14 days, downloadable from the run summary).
+- **Validate Docker build** — builds the `Dockerfile` with Buildx (GHA layer cache), then boots
+  the image with a dummy `ANTHROPIC_API_KEY` and polls `/health` for up to 30s. This catches
+  Dockerfile regressions before merge, since App Platform otherwise only builds after push to
+  `main`.
+
+Note that `dtolnay/rust-toolchain@stable` floats, so a new clippy release can introduce lints
+that fail CI on untouched code.
+
 ## PR Workflow
 
 After pushing a PR, if the user explicitly asks to monitor and auto-merge:
