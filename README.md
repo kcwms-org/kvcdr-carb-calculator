@@ -119,6 +119,8 @@ App Platform caps request bodies at ~1 MB. Clients must resize images before upl
 | `DEFAULT_ENGINE` | no | `claude` | AI engine to use |
 | `AI_EXTRACTION_MODEL` | no | `claude-haiku-4-5-20251001` | Phase-1 extraction model |
 | `AI_REASONING_MODEL` | no | `claude-sonnet-4-6` | Phase-2 reasoning model |
+| `AI_CONNECT_TIMEOUT_SECS` | no | `10` | Connect timeout for each Claude API call |
+| `AI_REQUEST_TIMEOUT_SECS` | no | `45` | Total timeout for each Claude API call; on timeout `/analyze` returns 504 |
 | `CACHE_TTL_SECS` | no | `86400` | Cache entry lifetime (seconds) |
 | `SERVER_PORT` | no | `3000` | TCP port to listen on |
 | `REDIS_URL` | no | — | Redis connection URL; moka-only if unset |

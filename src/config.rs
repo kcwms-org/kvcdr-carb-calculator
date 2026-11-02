@@ -12,6 +12,8 @@ pub struct Config {
     pub cache_ttl_secs: u64,
     pub server_port: u16,
     pub redis_url: Option<String>,
+    pub ai_connect_timeout_secs: u64,
+    pub ai_request_timeout_secs: u64,
 }
 
 impl Config {
@@ -41,6 +43,14 @@ impl Config {
                 .parse()
                 .context("SERVER_PORT must be a valid port number")?,
             redis_url: env::var("REDIS_URL").ok(),
+            ai_connect_timeout_secs: env::var("AI_CONNECT_TIMEOUT_SECS")
+                .unwrap_or_else(|_| "10".to_string())
+                .parse()
+                .context("AI_CONNECT_TIMEOUT_SECS must be a valid integer")?,
+            ai_request_timeout_secs: env::var("AI_REQUEST_TIMEOUT_SECS")
+                .unwrap_or_else(|_| "45".to_string())
+                .parse()
+                .context("AI_REQUEST_TIMEOUT_SECS must be a valid integer")?,
         })
     }
 }

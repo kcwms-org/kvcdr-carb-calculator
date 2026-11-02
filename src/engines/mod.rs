@@ -28,13 +28,21 @@ pub trait ExtractionEngine: Send + Sync {
     async fn extract(&self, input: AnalysisInput) -> Result<ExtractionResult, AppError>;
 }
 
+fn timeouts(config: &Config) -> claude::ClaudeTimeouts {
+    claude::ClaudeTimeouts {
+        connect: std::time::Duration::from_secs(config.ai_connect_timeout_secs),
+        request: std::time::Duration::from_secs(config.ai_request_timeout_secs),
+    }
+}
+
 pub fn build_engine(name: &str, config: &Config) -> Result<Box<dyn AiEngine>, AppError> {
     match name {
         "claude" => Ok(Box::new(claude::ClaudeEngine::new(
             &config.anthropic_api_key,
             &config.ai_reasoning_model,
             &config.reasoning_prompt,
-        ))),
+            timeouts(config),
+        )?)),
         other => Err(AppError::UnknownEngine(other.to_string())),
     }
 }
@@ -45,7 +53,8 @@ pub fn build_extraction_engine(name: &str, config: &Config) -> Result<Box<dyn Ex
             &config.anthropic_api_key,
             &config.ai_extraction_model,
             &config.extraction_prompt,
-        ))),
+            timeouts(config),
+        )?)),
         other => Err(AppError::UnknownEngine(other.to_string())),
     }
 }

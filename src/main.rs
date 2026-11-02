@@ -7,7 +7,15 @@ mod routes;
 
 use std::sync::Arc;
 
-use axum::{extract::DefaultBodyLimit, routing::{get, post}, Router};
+use std::time::Instant;
+
+use axum::{
+    extract::{DefaultBodyLimit, Request},
+    middleware::{self, Next},
+    response::Response,
+    routing::{get, post},
+    Router,
+};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use utoipa::OpenApi;
@@ -39,6 +47,24 @@ fn openapi() -> utoipa::openapi::OpenApi {
     doc
 }
 
+/// Logs method, path, status, and latency for every request (except health checks).
+async fn log_requests(req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let started = Instant::now();
+    let response = next.run(req).await;
+    if path != "/health" {
+        tracing::info!(
+            method = %method,
+            path = %path,
+            status = response.status().as_u16(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "request complete"
+        );
+    }
+    response
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -62,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/analyze", post(analyze_handler))
         .layer(DefaultBodyLimit::max(20 * 1024 * 1024)) // 20 MB ceiling; clients should resize to <1 MB to fit App Platform ingress
         .layer(CorsLayer::permissive())
+        .layer(middleware::from_fn(log_requests))
         .with_state(state);
 
     let addr = format!("0.0.0.0:{}", config.server_port);
