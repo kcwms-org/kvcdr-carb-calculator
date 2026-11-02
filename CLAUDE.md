@@ -56,6 +56,8 @@ CACHE_TTL_SECS=86400
 SERVER_PORT=3000
 AI_EXTRACTION_MODEL=claude-haiku-4-5-20251001
 AI_REASONING_MODEL=claude-sonnet-4-6
+AI_CONNECT_TIMEOUT_SECS=10         # per Claude API call
+AI_REQUEST_TIMEOUT_SECS=45         # per Claude API call; timeout -> 504 JSON error
 REDIS_URL=redis://localhost:6379   # optional
 ```
 
@@ -81,6 +83,13 @@ doctl apps logs 10008a08-078b-420d-81a6-2ec817254292 --type run --follow
 # Trigger a redeploy without a code change
 doctl apps create-deployment 10008a08-078b-420d-81a6-2ec817254292
 ```
+
+### Logging
+
+Logs are JSON on stdout (captured by App Platform runtime logs). Every request logs a
+`request complete` line with status and `elapsed_ms`; every Claude call logs `claude api call
+complete` (or `claude api call failed` / `claude api returned an error`) with phase, model,
+duration, and Anthropic `request_id`; every error response is logged with its full message.
 
 ### Ingress limit
 
