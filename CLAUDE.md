@@ -26,7 +26,8 @@ src/
 ├── engines/
 │   ├── mod.rs            # AiEngine + ExtractionEngine traits + factory
 │   └── claude.rs         # Claude reasoning + extraction engines
-├── cache/mod.rs          # Moka L1 + optional Redis L2 cache
+├── cache/mod.rs          # Moka L1 + optional Redis L2 cache; key built from normalized extracted items
+│   └── normalize.rs      # Name/quantity/unit normalization for the cache key
 └── routes/
     └── analyze.rs        # POST /analyze multipart handler
 ```

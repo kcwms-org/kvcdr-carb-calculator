@@ -167,7 +167,12 @@ pub async fn analyze_handler(
     };
     tracing::info!("phase 1: extraction start");
     let extraction_result = state.extraction_engine.extract(extraction_input).await?;
-    tracing::info!(items = extraction_result.items.len(), "phase 1: extraction complete");
+    tracing::info!(
+        items = extraction_result.items.len(),
+        extracted = ?extraction_result.items,
+        normalized_text = extraction_result.normalized_text.as_deref().unwrap_or(""),
+        "phase 1: extraction complete"
+    );
 
     // Cache key derived from normalized extraction output
     let reasoning_model = state.reasoning_engine.name().to_string();
@@ -176,6 +181,8 @@ pub async fn analyze_handler(
         &extraction_result.version,
         &extraction_result.items,
     );
+
+    tracing::info!(cache_key = &cache_key[..8], "cache key built");
 
     if let Some(cached_items) = state.cache.get(&cache_key).await {
         tracing::info!("cache hit — skipping phase 2");

@@ -15,7 +15,7 @@ POST /analyze (multipart/form-data: image, text, datetime)
   analyze_handler
   ├── Parse multipart fields
   ├── Phase 1 — extraction engine identifies food items
-  ├── Build cache key from extraction output
+  ├── Build cache key from normalized extraction output
   ├── Cache lookup ── hit ──▶ return cached AnalyzeResponse (cached: true)
   │       │
   │      miss
@@ -36,7 +36,8 @@ src/
 ├── engines/
 │   ├── mod.rs            # AiEngine + ExtractionEngine traits + factory
 │   └── claude.rs         # Claude reasoning + extraction engines
-├── cache/mod.rs          # Moka L1 + optional Redis L2 cache
+├── cache/mod.rs          # Moka L1 + optional Redis L2 cache; key built from normalized extracted items
+│   └── normalize.rs      # Name/quantity/unit normalization for the cache key
 └── routes/
     ├── analyze.rs        # POST /analyze handler
     └── tests.rs          # Integration + unit tests

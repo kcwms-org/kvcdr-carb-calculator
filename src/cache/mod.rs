@@ -5,7 +5,10 @@ use redis::AsyncCommands;
 use sha2::{Digest, Sha256};
 use tracing::{debug, warn};
 
+mod normalize;
+
 use crate::models::{ExtractedItem, FoodItem};
+use normalize::normalize_item;
 
 #[derive(Clone)]
 pub struct AnalysisCache {
@@ -38,15 +41,18 @@ impl AnalysisCache {
     }
 
     /// Build a cache key from reasoning model name, extraction schema version,
-    /// and the sorted list of extracted items. Items are sorted by name so that
-    /// the same meal described in different word order produces the same key.
+    /// and the normalized, sorted list of extracted items. Names, quantities and
+    /// units are normalized (see `normalize`) and items are sorted so that the same
+    /// meal described in different words or order produces the same key.
     pub fn cache_key(
         reasoning_model: &str,
         extraction_version: &str,
         items: &[ExtractedItem],
     ) -> String {
-        let mut sorted: Vec<&ExtractedItem> = items.iter().collect();
-        sorted.sort_by(|a, b| a.item.cmp(&b.item));
+        let mut sorted: Vec<ExtractedItem> = items.iter().map(normalize_item).collect();
+        sorted.sort_by(|a, b| {
+            (&a.item, &a.quantity, &a.quantity_type).cmp(&(&b.item, &b.quantity, &b.quantity_type))
+        });
 
         let canonical = serde_json::to_string(&sorted).unwrap_or_default();
 
