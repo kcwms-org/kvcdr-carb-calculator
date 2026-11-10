@@ -1,5 +1,7 @@
 # Issue #39 — Similar text queries should return cached results
 
+**Status:** Done — merged via PR #40
+
 ## Summary
 
 Two text submissions describing the same food a minute apart ("Half a cup of dried oatmeal"
