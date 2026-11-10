@@ -53,11 +53,32 @@ requests. The fix should handle all three.
    - Sort by the normalized name, then quantity, then unit, so the key is stable even when two
      items share a name.
 
-3. **Tighten the extraction prompt** (`prompts/extraction.txt`):
-   - Tell the model to drop preparation states that don't change carbs per serving
-     (e.g. "dried", "uncooked") and parenthetical detail from `item`.
+3. **Add a simplify-then-extract step to the extraction prompt** (`prompts/extraction.txt`).
+   Requested in an issue comment: have the existing extraction engine first reduce the input to
+   simple nouns and food measurements, then do its current work. This happens in the same Claude
+   call (no new engine, no extra latency):
+   - **Step A — simplify.** Rewrite the description as a plain list of `<number> <unit> <food>`
+     phrases. Drop articles, filler adverbs and adjectives that don't change carbs
+     ("a", "the", "about", "some", "delicious", "dried", "uncooked" for oats, "fresh", "plain").
+     Turn number words and fractions into decimals ("half a cup" → `0.5 cup`).
+   - **Keep carb-relevant modifiers.** Not every adjective is filler. Keep the ones that change
+     carbs per serving: preparation state where it matters (`cooked` vs `uncooked` rice and
+     pasta), variety (`brown rice`, `whole wheat bread`, `sweet potato`), and sugar content
+     (`sugar-free`, `diet`, `sweetened`). Turn size adjectives into amounts instead of dropping
+     them ("a large apple" → `1 large apple` stays as quantity + size, or a weight in `g`).
+     List these keep/drop rules with examples in the prompt.
+   - **Restrict units** to common food-preparation measurements: `tsp`, `tbsp`, `cup`,
+     `fl oz`, `ml`, `l`, `oz`, `lb`, `g`, `kg`, plus count units (`individual`, `slice`, `piece`,
+     `strip`). Extend the unit mapping in step 2 to cover this full set (`teaspoon(s)` → `tsp`,
+     `liter(s)`/`litre(s)` → `l`, `pound(s)`/`lbs` → `lb`, `gram(s)` → `g`, and so on).
+   - **Step B — extract** `{item, quantity, quantity_type}` from the simplified phrases, as now.
+   - Return the simplified text in a new optional `normalized_text` field in the extraction
+     JSON so it can be logged (step 1). It is not part of the cache key; the key is still built
+     from `items`. Add `#[serde(default)] normalized_text: Option<String>` to
+     `ExtractionResult` in `src/models/mod.rs`.
    - Require `quantity` as a decimal number (`"0.5"`, never `".5"` or `"1/2"` or `"half"`).
-   - Add an oatmeal-style example.
+   - Add examples, including both inputs from this issue mapping to
+     `0.5 cup oatmeal` → `{"item":"oatmeal","quantity":"0.5","quantity_type":"cup"}`.
    - Bump `"version"` to `"2"` in the schema example so old cache entries are not mixed with new
      keys. (The version string is part of the key, so this invalidates the cache once — fine,
      the TTL is 24 h anyway.)
@@ -93,6 +114,12 @@ normalizes every query into a standard format first.
   for item names. Caveat: stems aren't words (`oatmeal` stays, but `berries` → `berri`), which is
   fine for a hash key but makes logs harder to read. The implementer can pick either; a stemmer
   is the lower-maintenance choice.
+
+- **Part-of-speech stripping in Rust code (before the Claude call):** not recommended. Rust has
+  no light, accurate part-of-speech tagger (the options pull in large ML models), it wouldn't
+  help photo requests, and a blind "drop all adjectives" rule removes carb-relevant words like
+  `brown`, `sweet`, `cooked` and `sugar-free`. Doing the simplification inside the extraction
+  prompt (step 3) gets the same result with context-aware judgment.
 
 ## Risks & open questions
 
