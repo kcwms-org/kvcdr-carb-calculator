@@ -12,6 +12,10 @@ pub struct ExtractedItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionResult {
     pub version: String,
+    /// Simplified restatement of the input produced by the extraction step. Logged only;
+    /// not part of the cache key.
+    #[serde(default)]
+    pub normalized_text: Option<String>,
     pub items: Vec<ExtractedItem>,
 }
 

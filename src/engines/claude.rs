@@ -62,13 +62,17 @@ async fn call_claude(
     system_prompt: &str,
     content: Vec<Value>,
     phase: &'static str,
+    temperature: Option<f64>,
 ) -> Result<String, AppError> {
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "max_tokens": 1024,
         "system": system_prompt,
         "messages": [{ "role": "user", "content": content }]
     });
+    if let Some(t) = temperature {
+        body["temperature"] = json!(t);
+    }
 
     let started = Instant::now();
     let result = async {
@@ -195,6 +199,7 @@ impl AiEngine for ClaudeEngine {
             &self.system_prompt,
             build_message_content(&input),
             "reasoning",
+            None,
         )
         .await?;
 
@@ -254,6 +259,8 @@ impl ExtractionEngine for ClaudeExtractionEngine {
             &self.system_prompt,
             build_message_content(&input),
             "extraction",
+            // Deterministic output so equivalent inputs yield the same items (and cache key)
+            Some(0.0),
         )
         .await?;
 

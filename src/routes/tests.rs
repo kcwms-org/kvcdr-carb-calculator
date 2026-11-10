@@ -91,6 +91,7 @@ fn test_items() -> Vec<FoodItem> {
 fn test_extraction_result() -> ExtractionResult {
     ExtractionResult {
         version: "1".to_string(),
+        normalized_text: None,
         items: vec![
             ExtractedItem {
                 item: "oatmeal".to_string(),
@@ -214,6 +215,43 @@ async fn engine_error_returns_502() {
 }
 
 // --- Cache key unit tests ---
+
+#[test]
+fn cache_key_matches_equivalent_descriptions() {
+    // Issue #39: "Half a cup of dried oatmeal" vs ".5 cups oatmeal"
+    let a = vec![ExtractedItem {
+        item: "dried oatmeal".to_string(),
+        quantity: "0.5".to_string(),
+        quantity_type: "cup".to_string(),
+    }];
+    let b = vec![ExtractedItem {
+        item: "oatmeal".to_string(),
+        quantity: ".5".to_string(),
+        quantity_type: "cups".to_string(),
+    }];
+    assert_eq!(
+        AnalysisCache::cache_key("claude-sonnet-4-6", "2", &a),
+        AnalysisCache::cache_key("claude-sonnet-4-6", "2", &b),
+    );
+}
+
+#[test]
+fn cache_key_differs_for_different_amounts_or_foods() {
+    let item = |name: &str, qty: &str| {
+        vec![ExtractedItem {
+            item: name.to_string(),
+            quantity: qty.to_string(),
+            quantity_type: "cup".to_string(),
+        }]
+    };
+    let base = AnalysisCache::cache_key("m", "2", &item("oatmeal", "0.5"));
+    assert_ne!(base, AnalysisCache::cache_key("m", "2", &item("oatmeal", "1")));
+    assert_ne!(base, AnalysisCache::cache_key("m", "2", &item("rice", "0.5")));
+    assert_ne!(
+        AnalysisCache::cache_key("m", "2", &item("cooked rice", "1")),
+        AnalysisCache::cache_key("m", "2", &item("rice", "1")),
+    );
+}
 
 #[test]
 fn cache_key_stable_for_same_items_different_order() {
