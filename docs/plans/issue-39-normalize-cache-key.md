@@ -26,6 +26,11 @@ requests. The fix should handle all three.
 
 ## Proposed approach
 
+0. **Make extraction deterministic.** `call_claude` in `src/engines/claude.rs` sends no
+   `temperature`, so phase 1 runs at the API default (1.0) and can phrase the same food
+   differently on every call. Set `temperature: 0` for the extraction call (keep the reasoning
+   call as is, or make it configurable). This is likely the largest single win.
+
 1. **Log extracted items.** In `src/routes/analyze.rs`, add the extracted items (and the
    first 8 chars of the cache key) to the `phase 1: extraction complete` log line. This makes
    future cache misses easy to diagnose from App Platform logs.
@@ -69,6 +74,26 @@ requests. The fix should handle all three.
 5. **Docs** — update the cache description in `CLAUDE.md` / README to say the key is built
    from normalized extracted items.
 
+## Alternatives considered
+
+Raised in an issue comment: use a word-normalization library, or add an engine plugin that
+normalizes every query into a standard format first.
+
+- **Separate normalization engine (extra LLM call before extraction):** not recommended. Phase 1
+  extraction already is that engine: it turns free text or an image into
+  `{item, quantity, quantity_type}`, and that output is what gets hashed. A second LLM call would
+  add latency and cost, and would be just as nondeterministic unless run at temperature 0, in
+  which case fixing phase 1 directly does the same job.
+- **Normalization library on the raw query text:** not recommended as the main fix. Hashing
+  happens on the extraction output, not the raw text, and image requests have no text at all.
+  Generic text tools (stemmers, lemmatizers) also can't turn "half a cup" into `0.5 cup`; that
+  needs the LLM or the small quantity parser in step 2.
+- **Library on extracted names (partial use):** reasonable. A stemmer such as the
+  `rust-stemmers` crate (Snowball English) could replace the hand-written plural rules in step 2
+  for item names. Caveat: stems aren't words (`oatmeal` stays, but `berries` → `berri`), which is
+  fine for a hash key but makes logs harder to read. The implementer can pick either; a stemmer
+  is the lower-maintenance choice.
+
 ## Risks & open questions
 
 - **Over-normalization.** Dropping modifiers can merge foods with different carbs per serving
@@ -81,8 +106,7 @@ requests. The fix should handle all three.
 - **Nondeterministic extraction** can still produce different names (`"oatmeal"` vs
   `"rolled oat"`). Normalization reduces misses but won't remove them; an embedding or
   synonym-table approach is out of scope.
-- Setting `temperature: 0` on the extraction call (check `src/engines/claude.rs`) would make
-  extraction more repeatable. Worth checking whether it's already set.
+- Confirm `temperature: 0` does not hurt extraction quality on images (spot-check a few photos).
 - The old cache entries become unreachable after the version bump; this is intended.
 
 ## Acceptance criteria
