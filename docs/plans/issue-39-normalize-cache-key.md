@@ -1,0 +1,96 @@
+# Issue #39 — Similar text queries should return cached results
+
+## Summary
+
+Two text submissions describing the same food a minute apart ("Half a cup of dried oatmeal"
+and ".5 cups oatmeal") both returned `"cached": false`, even though they produced the same
+27 g result. Equivalent descriptions should map to the same cache key so the second request
+skips the phase-2 reasoning call.
+
+## Root cause / context
+
+The cache key (`AnalysisCache::cache_key` in `src/cache/mod.rs`) is a SHA-256 of the reasoning
+model, the extraction schema version, and the phase-1 `ExtractedItem`s serialized as JSON
+(sorted by `item`). The JSON is hashed verbatim, so any difference in the extraction output
+makes a different key:
+
+- **Name drift** — the extraction model (Haiku) does not reliably produce one canonical name.
+  The returned item names ("Dried oatmeal (rolled oats, uncooked)" vs "Oatmeal (dry rolled oats,
+  0.5 cup)") suggest extraction produced something like `"dried oatmeal"` vs `"oatmeal"`.
+- **Quantity drift** — `quantity` is a free-form string. `"0.5"`, `".5"`, `"1/2"`, `"0.50"`
+  and `"half"` all hash differently.
+- **Unit drift** — `quantity_type` is free-form in practice (`"cup"` vs `"cups"`, `"Cup"`).
+
+We don't log the extracted items today, so we can't confirm which field differed for these two
+requests. The fix should handle all three.
+
+## Proposed approach
+
+1. **Log extracted items.** In `src/routes/analyze.rs`, add the extracted items (and the
+   first 8 chars of the cache key) to the `phase 1: extraction complete` log line. This makes
+   future cache misses easy to diagnose from App Platform logs.
+
+2. **Add a normalization module** — `src/cache/normalize.rs` with
+   `pub fn normalize_item(item: &ExtractedItem) -> ExtractedItem`, applied to every item in
+   `cache_key()` before sorting and hashing:
+   - **Name:** lowercase, trim, collapse whitespace, drop parenthetical text, strip
+     punctuation, drop filler modifiers that don't change carbs (`dried`, `dry`, `uncooked`,
+     `raw`, `plain`, `fresh`), and singularize a trailing plural `s` (careful with words like
+     `hummus`, `asparagus` — keep a small exception list).
+   - **Quantity:** parse to `f64` from decimals (`".5"`, `"0.50"`), fractions (`"1/2"`,
+     `"1 1/2"`), and words (`"half"`, `"quarter"`, `"one"`…`"ten"`); format with up to 3
+     decimals, trimming trailing zeros (`0.5`). Fall back to the trimmed lowercase string if it
+     can't be parsed.
+   - **Unit:** lowercase, trim, map synonyms/plurals to the canonical set from
+     `prompts/extraction.txt` (`cups`→`cup`, `tablespoon(s)`/`tbsps`→`tbsp`,
+     `ounce(s)`→`oz`, `slices`→`slice`, `pieces`→`piece`, `strips`→`strip`,
+     `each`/`whole`/`pcs`→ as appropriate).
+   - Sort by the normalized name, then quantity, then unit, so the key is stable even when two
+     items share a name.
+
+3. **Tighten the extraction prompt** (`prompts/extraction.txt`):
+   - Tell the model to drop preparation states that don't change carbs per serving
+     (e.g. "dried", "uncooked") and parenthetical detail from `item`.
+   - Require `quantity` as a decimal number (`"0.5"`, never `".5"` or `"1/2"` or `"half"`).
+   - Add an oatmeal-style example.
+   - Bump `"version"` to `"2"` in the schema example so old cache entries are not mixed with new
+     keys. (The version string is part of the key, so this invalidates the cache once — fine,
+     the TTL is 24 h anyway.)
+
+4. **Tests** (in `src/routes/tests.rs`, or a new `#[cfg(test)]` block in
+   `src/cache/normalize.rs`):
+   - `cache_key` is equal for `{"dried oatmeal","0.5","cup"}` and `{"oatmeal",".5","cups"}`.
+   - Quantity parsing: `".5"`, `"0.50"`, `"1/2"`, `"half"` → `"0.5"`; `"1 1/2"` → `"1.5"`.
+   - Unit mapping for each synonym.
+   - Different foods or amounts still produce different keys (`oatmeal 0.5 cup` ≠
+     `oatmeal 1 cup`; `oatmeal` ≠ `rice`).
+   - The existing `cache_key_stable_for_same_items_different_order` test still passes.
+
+5. **Docs** — update the cache description in `CLAUDE.md` / README to say the key is built
+   from normalized extracted items.
+
+## Risks & open questions
+
+- **Over-normalization.** Dropping modifiers can merge foods with different carbs per serving
+  — "cooked rice" vs "uncooked rice" differ ~3x per cup. Keep the modifier strip list to words
+  that are clearly safe, and do **not** strip `cooked`. Consider whether "dried oatmeal" vs
+  "cooked oatmeal" should really share a key; they should not. Prefer dropping only
+  `dried`/`dry`/`uncooked` when the base food is one that's normally measured dry (oats), or
+  just leave this to the prompt and keep code-level name normalization to formatting only.
+  Implementer should pick the conservative option if unsure.
+- **Nondeterministic extraction** can still produce different names (`"oatmeal"` vs
+  `"rolled oat"`). Normalization reduces misses but won't remove them; an embedding or
+  synonym-table approach is out of scope.
+- Setting `temperature: 0` on the extraction call (check `src/engines/claude.rs`) would make
+  extraction more repeatable. Worth checking whether it's already set.
+- The old cache entries become unreachable after the version bump; this is intended.
+
+## Acceptance criteria
+
+- The two inputs from the issue produce the same cache key, given the extraction outputs they
+  likely produce (covered by a unit test on normalized items).
+- Submitting "Half a cup of dried oatmeal" then ".5 cups oatmeal" against a running server
+  returns `"cached": true` on the second request (manual check; depends on extraction output).
+- Different foods and different amounts still get different keys.
+- Extracted items are visible in the `phase 1: extraction complete` log line.
+- `cargo build`, `cargo clippy -- -D warnings`, and `cargo test` pass.
